@@ -1,0 +1,34 @@
+{
+  "name": "leaflet",
+  "description": "Static file conversion, writing and reading",
+  "version": "0.0.1",
+  "author": "Andreas Madsen <amwebdk@gmail.com>",
+  "scripts": {
+    "test": "vows test/simple/* --spec --isolate"
+  },
+  "main": "./lib/module.js",
+  "repository" : {
+    "type": "git",
+    "url": "git://github.com/AndreasMadsen/leaflet.git"
+  },
+  "keywords": [
+    "static",
+    "file",
+    "directory",
+    "folder",
+    "convert",
+    "gzip",
+    "compress",
+    "read",
+    "write",
+    "copy"
+  ],
+  "devDependencies": {
+    "vows" :  "0.6.x"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": "0.6 || 0.7 || 0.8",
+    "npm": "1"
+  }
+}
