@@ -10,30 +10,43 @@ var vows = require('vows'),
     common = require('../common.js'),
     leaflet = require(common.leaflet);
 
-// create convert object
-var convert = leaflet({
-  read: common.fixture,
-  write: common.temp,
-  stat: common.stat
-});
-
-// ignore selected files
-convert.ignore('.DS_store');
-convert.ignore('/', 'ignore.js');
-
-// simpel handlers, will add first and second exports properties
-convert.handle('js', function (content, next) {
-  next( content + "\n" + "exports.first = 'first';" );
-});
-
-convert.handle('js', function (content, next) {
-  next( content + "\n" + "exports.second = 'second';" );
-});
-
 // remove temp content
 common.reset();
 
+var convert;
 vows.describe('testing leaflet compiler').addBatch({
+
+  'setup converter': {
+    topic: function () {
+      var self = this;
+
+      // create convert object
+      convert = leaflet(common.options, function (error) {
+        if (error) return self.callback(error, null);
+
+        // ignore selected files
+        convert.ignore('.DS_store');
+        convert.ignore('/', 'ignore.js');
+
+        // simpel handlers, will add first and second exports properties
+        convert.handle('js', function (content, next) {
+          next( content + "\n" + "exports.first = 'first';" );
+        });
+
+        convert.handle('js', function (content, next) {
+          next( content + "\n" + "exports.second = 'second';" );
+        });
+
+        self.callback(null, null);
+      });
+    },
+
+    'check that there was no errors': function (error, dum) {
+      assert.ifError(error);
+    }
+  }
+
+}).addBatch({
 
   'compile fixture files': {
     topic: function () {

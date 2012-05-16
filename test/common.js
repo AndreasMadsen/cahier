@@ -32,3 +32,10 @@ exports.reset = function () {
   wrench.rmdirSyncRecursive(exports.temp);
   wrench.mkdirSync(exports.temp);
 };
+
+// Combine all options
+exports.options = {
+  read: exports.fixture,
+  write: exports.temp,
+  stat: exports.stat
+};
