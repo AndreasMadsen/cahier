@@ -6,7 +6,7 @@
   "scripts": {
     "test": "vows test/simple/* --spec --isolate"
   },
-  "main": "./lib/module.js",
+  "main": "./leaflet.js",
   "repository" : {
     "type": "git",
     "url": "git://github.com/AndreasMadsen/leaflet.git"
@@ -23,6 +23,9 @@
     "write",
     "copy"
   ],
+  "dependencies": {
+    "equilibrium": "0.1.x"
+  },
   "devDependencies": {
     "vows" :  "0.6.x",
     "wrench" : "1.3.x"
