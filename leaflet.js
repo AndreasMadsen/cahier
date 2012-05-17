@@ -14,18 +14,28 @@ var exists = fs.exists || path.exists;
 function Leaflet(options, callback) {
   var self = this;
 
+  // Check callback
+  if (typeof callback !== 'function') {
+    throw new Error('callback is missing');
+  }
+
   // Check options
-  if (typeof options !== 'object' ||
-      options === null ||
-      Object.keys(options) !== ['read', 'write', 'stat']) {
+
+  if (options === null ||
+      typeof options !== 'object' ||
+      typeof options.read !== 'string' ||
+      typeof options.write !== 'string' ||
+      typeof options.stat !== 'string') {
+
     callback(new Error('options object is not valid'));
+    return this;
   }
 
   this.options = options;
   this.handlers = {};
   this.ready = false;
   this.memory = 0;
-  this.stats = {};
+  this.state = {};
   this.query = {};
 
   // Resolve filepaths and dirpaths
@@ -51,7 +61,7 @@ function Leaflet(options, callback) {
   exists(options.stat, function (exist) {
 
     // Set stored stat to empty object if the file don't exist
-    if (exist === false) return track.set('stat');
+    if (exist === false) return openStat();
 
     // Read JSON file
     fs.readFile(options.stat, 'utf8', function (error, content) {
@@ -64,13 +74,33 @@ function Leaflet(options, callback) {
         return track.set('stat', error);
       }
 
-      // Open stat stream
-      self.statStream = equilibrium(self.options.stat);
-      self.statStream.open();
+      openStat();
     });
   });
+
+  // Open stat stream
+  function openStat() {
+    self.statStream = equilibrium(self.options.stat);
+
+    function errorFn(error) {
+      self.statStream.removeListener('open', openFn);
+      track.set('stat', error);
+    }
+
+    function openFn() {
+      self.statStream.removeListener('error', errorFn);
+      track.set('stat');
+    }
+
+    self.statStream.once('error', errorFn);
+    self.statStream.once('open', openFn);
+
+    self.statStream.open();
+  }
 }
-module.exports = function () { return new Leaflet(); };
+module.exports = function (options, callback) {
+  return new Leaflet(options, callback);
+};
 
 // Check all files in `read` and process them all
 var types = ['B', 'KB', 'MB', 'GB'];
@@ -109,7 +139,9 @@ Leaflet.prototype.handle = function () {
   var allHandlers = self.handlers['*'] || (self.handlers['*'] = []);
 
   // convert filetype to lowercase
-  var filetypes = args.map(String.prototype.toLowerCase.call);
+  var filetypes = args.map(function (value) {
+    return value.toLowerCase();
+  });
 
   // attach universial handle to already existing file handlers and allHandlers
   if (filetypes.length === 0) {
@@ -161,7 +193,7 @@ Leaflet.prototype.read = function (filename, callback) {
   }
 
   // Try reading data from disk cache
-  if (this.stats[filename]) {
+  if (this.state[filename]) {
     fs.readFile(write, 'utf8', function (error, content) {
 
       // in case there was an error, make a clean read
@@ -178,7 +210,7 @@ Leaflet.prototype.read = function (filename, callback) {
   }
 
   (function beginReading() {
-    cleanRead(read, filename, function (error, stat, content) {
+    cleanRead(self, read, filename, function (error, stat, content) {
       // In case there was an error, remove file from stat and send error to all callbacks
       if (error) {
         updateStat(self, filename);
@@ -203,18 +235,19 @@ function executeCallbacks(callbacks, error, content) {
 }
 
 // make a clean read
-function cleanRead(read, filename, callback) {
+function cleanRead(self, read, filename, callback) {
   fs.open(read, 'r', function (error, fd) {
     if (error) return callback(error, null, null);
 
     fs.fstat(fd, function (error, stat) {
       if (error) return callback(error, null, null);
 
-      fs.read(fd, new Buffer(stat.size), 0, stat.size, 0, function (error, buffer) {
+      var buffer = new Buffer(stat.size);
+      fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
         if (error) return callback(error, null, null);
 
         // run file handlers
-        handleFile(self, filename, buffer.toString('utf8'), function (error, content) {
+        handleFile(self, filename, buffer.toString(), function (error, content) {
           if (error) return callback(error, null, null);
 
           // All good, lets update stat cache and send callback
@@ -234,6 +267,8 @@ Leaflet.prototype.compile = function (callback) {
   if (this.ready === false) {
     return callback(new Error('leaflet object is not ready'));
   }
+
+  callback();
 };
 
 // Watch `read` directory for changes and update files once they are requested
@@ -246,7 +281,8 @@ Leaflet.prototype.watch = function (callback) {
 // run file handlers
 function handleFile(self, filename, content, callback) {
   var ext = path.extname(filename).slice(1);
-  var handlers = (self[ext] || self['*'] || []).slice();
+
+  var handlers = (self.handlers[ext] || self.handlers['*'] || []).slice();
 
   (function execute() {
     // get the first/next handler
@@ -275,13 +311,13 @@ function updateStat(self, filename, value) {
 
   // grap set value
   if (arguments.length === 3) {
-    self.stat[filename] = value;
+    self.state[filename] = value;
   } else {
-    delete self.stat[filename];
+    delete self.state[filename];
   }
 
   // save JSON file
-  self.statStream.write(JSON.stringify(self.stat));
+  self.statStream.write(JSON.stringify(self.state));
 }
 
 // Extremely simple progress tracker
@@ -325,7 +361,8 @@ function createDirectory(dirpath, callback) {
 }
 
 // Trim path safely
-var dirSplit = process.platform === 'win32' ? '/' : '\\';
+var dirSplit = process.platform === 'win32' ? '\\' : '/';
+var ignorePaths = ['', '.', '..'];
 function trimPath(filepath) {
 
   // resolve and move all ../ to the begining
@@ -334,16 +371,15 @@ function trimPath(filepath) {
   // remove all ../
   filepath = filepath.split(dirSplit);
   filepath = filepath.filter(function (value) {
-    return value !== '..';
+    return ignorePaths.indexOf(value) === -1;
   });
 
   // combine filepath
   filepath = filepath.join(dirSplit);
 
-  // remove ./ too
-  if (filepath[0] === '.' && filepath[1] === dirSplit) {
-    filepath = filepath.slice(2);
-  }
+  // remove ./ and / too
+  if (filepath[0] === '.') filepath = filepath.slice(1);
+  if (filepath[0] === dirSplit) filepath = filepath.slice(1);
 
   return filepath;
 }

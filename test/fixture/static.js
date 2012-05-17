@@ -1,4 +1,4 @@
-
-exports.zero = 'zero';
-exports.position = 'root';
-
+{
+  "zero": "zero",
+  "position": "root"
+}

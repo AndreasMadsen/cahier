@@ -24,7 +24,8 @@
     "copy"
   ],
   "dependencies": {
-    "equilibrium": "0.1.x"
+    "equilibrium": "0.1.x",
+    "mkdirp": "*"
   },
   "devDependencies": {
     "vows" :  "0.6.x",
