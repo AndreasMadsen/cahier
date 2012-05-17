@@ -21,13 +21,14 @@ function Leaflet(options, callback) {
     callback(new Error('options object is not valid'));
   }
 
-  // Resolve filepaths and dirpaths
   this.options = options;
   this.handlers = {};
   this.ready = false;
   this.memory = 0;
   this.stats = {};
+  this.query = {};
 
+  // Resolve filepaths and dirpaths
   Object.keys(options).forEach(function (name) {
     options[name] = path.resolve(options[name]);
   });
@@ -122,8 +123,8 @@ Leaflet.prototype.handle = function () {
   // Attach handle to all filetypes
   filetypes.forEach(function (type) {
 
-    // will set handlers[type] to an array if it hasn't been done before
-    // since already added unversial handlers should be executed first
+    // will set handlers[type] to an array if it hasn't been done before.
+    // Since already added unversial handlers should be executed first
     // we will copy the allHandlers array and use that
     var handlers = self.handlers[type] || (self.handlers[type] = allHandlers.slice());
 
@@ -148,62 +149,85 @@ Leaflet.prototype.read = function (filename, callback) {
   var read = path.resolve(this.options.read, filename);
   var write = path.resolve(this.options.write, filename);
 
+  // create or get callback array
+  var callbacks = this.query[filename] || (this.query[filename] = []);
+
+  // append this callback to the stack
+  callbacks.push(callback);
+
+  // Just wait if fs.read is in progress
+  if (callback.length > 1) {
+    return;
+  }
+
   // Try reading data from disk cache
-  if (this.stat[filename]) {
+  if (this.stats[filename]) {
     fs.readFile(write, 'utf8', function (error, content) {
+
+      // in case there was an error, make a clean read
       if (error) {
         updateStat(self, filename);
-        return cleanRead();
+        return beginReading();
       }
 
-      callback(null, content);
+      // Execute all callbacks
+      executeCallbacks(callbacks, null, content);
     });
 
     return;
   }
 
-  // make a clean read
-  (function cleanRead() {
-    fs.open(read, 'r', function (error, fd) {
+  (function beginReading() {
+    cleanRead(read, filename, function (error, stat, content) {
+      // In case there was an error, remove file from stat and send error to all callbacks
       if (error) {
         updateStat(self, filename);
-        return callback(error, null);
+        return executeCallbacks(callbacks, error, null);
       }
 
-      fs.fstat(fd, function (error, stat) {
-        if (error) {
-          updateStat(self, filename);
-          return callback(error, null);
-        }
+      // Set modified time in stat store
+      updateStat(self, filename, stat.mtime);
 
-        fs.read(fd, new Buffer(stat.size), 0, stat.size, 0, function (error, buffer) {
-          if (error) {
-            updateStat(self, filename);
-            return callback(error, null);
-          }
+      // Execute all callbacks
+      executeCallbacks(callbacks, null, content);
+    });
+  })();
+};
 
-          // run file handlers
-          handleFile(self, filename, buffer.toString('utf8'), function (error, content) {
-            if (error) {
-              updateStat(self, filename);
-              return callback(error, null);
-            }
+// Execute callback stack
+function executeCallbacks(callbacks, error, content) {
+  var fn;
+  while (fn = callbacks.shift()) {
+    fn(error, content);
+  }
+}
 
-            // All good, lets update stat cache and send callback
-            fs.writeFile(filename, content, function (error) {
-              if (error) {
-                updateStat(self, filename);
-                return callback(error, null);
-              }
+// make a clean read
+function cleanRead(read, filename, callback) {
+  fs.open(read, 'r', function (error, fd) {
+    if (error) return callback(error, null, null);
 
-              updateStat(self, filename, stat.mtime);
-            });
+    fs.fstat(fd, function (error, stat) {
+      if (error) return callback(error, null, null);
+
+      fs.read(fd, new Buffer(stat.size), 0, stat.size, 0, function (error, buffer) {
+        if (error) return callback(error, null, null);
+
+        // run file handlers
+        handleFile(self, filename, buffer.toString('utf8'), function (error, content) {
+          if (error) return callback(error, null, null);
+
+          // All good, lets update stat cache and send callback
+          fs.writeFile(filename, content, function (error) {
+            if (error) return callback(error, null, null);
+
+            callback(null, stat, content);
           });
         });
       });
     });
-  })();
-};
+  });
+}
 
 // Find all files in `read` and process them all
 Leaflet.prototype.compile = function (callback) {
