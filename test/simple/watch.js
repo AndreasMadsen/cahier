@@ -95,7 +95,10 @@ vows.describe('testing leaflet watcher').addBatch({
       'should be updated': function (error, result) {
         assert.ifError(error);
 
-        assert.equal(result.origin.mtime.getTime(), JSON.parse(result.cache)['change.json']);
+        assert.deepEqual({
+          mtime: result.origin.mtime.getTime(),
+          size: result.origin.size
+        }, JSON.parse(result.cache)['change.json']);
       }
     },
 
@@ -161,7 +164,10 @@ vows.describe('testing leaflet watcher').addBatch({
       'should be updated': function (error, result) {
         assert.ifError(error);
 
-        assert.equal(result.origin.mtime.getTime(), JSON.parse(result.cache)['change.json']);
+        assert.deepEqual({
+          mtime: result.origin.mtime.getTime(),
+          size: result.origin.size
+        }, JSON.parse(result.cache)['change.json']);
       }
     },
 

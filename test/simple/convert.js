@@ -44,6 +44,8 @@ vows.describe('testing leaflet converter').addBatch({
             next( JSON.stringify(obj) );
           });
 
+          convert.handle('js', 'json');
+
           callback(null);
         }
       ], this.callback);
@@ -89,7 +91,10 @@ vows.describe('testing leaflet converter').addBatch({
       },
 
       'should be updated': function (error, result) {
-        assert.equal(result.origin.mtime.getTime(), JSON.parse(result.cache)['static.json']);
+        assert.deepEqual({
+          mtime: result.origin.mtime.getTime(),
+          size: result.origin.size
+        }, JSON.parse(result.cache)['static.json']);
       }
     },
 

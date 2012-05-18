@@ -197,17 +197,17 @@ Leaflet.prototype.read = function (filename, callback) {
       fs.stat(read, function (error, stat) {
         if (error) {
           updateStat(self, filename);
-          return callback(error, null, null);
+          return callback(error, null);
         }
 
         // source has been modified, read from source
-        if (stat.mtime.getTime() > self.state[filename]) {
+        var cache = self.state[filename];
+        if (stat.mtime.getTime() > cache.mtime || stat.size !== cache.size) {
           return readSource();
         }
 
         // source has not been modified, read from cache
         return readCache();
-
       });
 
     } else {
@@ -217,33 +217,38 @@ Leaflet.prototype.read = function (filename, callback) {
 
   function readCache() {
     fs.readFile(write, 'utf8', function (error, content) {
-
-      // in case there was an error, make a clean read
       if (error) {
         updateStat(self, filename);
         return readSource();
       }
 
-      // Execute all callbacks
-      executeCallbacks(callbacks, null, content);
+      return done(error, content);
     });
   }
 
   function readSource() {
-    cleanRead(self, read, filename, function (error, stat, content) {
-      // In case there was an error, remove file from stat and send error to all callbacks
+    async.waterfall([
+      // read from source directory
+      readSourceFile.bind(null, self, filename),
+
+      // parse content though the handlers
+      parseContent.bind(null, self, filename),
+
+      // save in drive cache
+      saveCache.bind(null, self, filename)
+
+    ], done);
+  }
+
+  function done(error, content) {
       if (error) {
         updateStat(self, filename);
         return executeCallbacks(callbacks, error, null);
       }
 
-      // Set modified time in stat store
-      updateStat(self, filename, stat.mtime);
-
       // Execute all callbacks
       executeCallbacks(callbacks, null, content);
-    });
-  }
+    }
 
   readSource();
 };
@@ -267,36 +272,6 @@ Leaflet.prototype.watch = function (callback) {
   return callback();
 };
 
-// run file handlers
-function handleFile(self, filename, content, callback) {
-
-  // get filetype handlers
-  var ext = path.extname(filename).slice(1);
-  var handlers = (self.handlers[ext] || self.handlers['*']);
-
-  // Skip parseing if there are no handlers
-  if (handlers === undefined) {
-    callback(null, content);
-  }
-
-  // Wrap handlers so they take both error and content as first argument
-  handlers = handlers.map(function (handle) {
-    return function (content, callback) {
-      handle(content, function (result) {
-        if (result instanceof Error) return callback(result, null);
-        callback(null, result);
-      });
-    };
-  });
-
-  // execute all filetype handlers
-  async.waterfall([
-    function (callback) {
-      callback(null, content);
-    }
-  ].concat(handlers), callback);
-}
-
 // Execute callback stack
 function executeCallbacks(callbacks, error, content) {
   var fn;
@@ -306,11 +281,13 @@ function executeCallbacks(callbacks, error, content) {
 }
 
 // make a clean read
-function cleanRead(self, read, filename, callback) {
+// callback(error, stat, content)
+function readSourceFile(self, filename, callback) {
   async.waterfall([
     // open fd
     function (callback) {
-      fs.open(read, 'r', callback);
+      var filepath = path.resolve(self.options.read, filename);
+      fs.open(filepath, 'r', callback);
     },
 
     // read file stat
@@ -324,33 +301,75 @@ function cleanRead(self, read, filename, callback) {
     function (fd, stat, callback) {
       var buffer = new Buffer(stat.size);
       fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
-        callback(error, stat, buffer);
-      });
-    },
-
-    // convert buffer handlers
-    function (stat, buffer, callback) {
-      handleFile(self, filename, buffer.toString(), function (error, content) {
-        callback(error, stat, content);
-      });
-    },
-
-    // All good, lets update stat cache and send callback
-    function (stat, content, callback) {
-      var filepath = path.resolve(self.options.cache, filename);
-      fs.writeFile(filepath, content, function (error) {
-        callback(error, stat, content);
+        callback(error, stat, buffer.toString());
       });
     }
   ], callback);
 }
 
+// run file handlers
+// callback(error, stat, content)
+function parseContent(self, filename, stat, content, callback) {
+
+  // get filetype handlers
+  var ext = path.extname(filename).slice(1);
+  var handlers = (self.handlers[ext] || self.handlers['*']);
+
+  // Skip parseing if there are no handlers
+  if (handlers === undefined) {
+    callback(null, stat, content);
+  }
+
+  // Wrap handlers so they take both error and content as first argument
+  handlers = handlers.map(function (handle) {
+    return function (content, callback) {
+
+      // modify filename so it match the new filetype
+      if (typeof handle === 'function') {
+        return handle(content, function (result) {
+          if (result instanceof Error) return callback(result, null);
+          callback(null, result);
+        });
+      }
+
+      // parse as new handler
+      filename = filename.substr(0, filename.length - path.extname(filename)) + '.' + handle;
+      parseContent(self, filename, stat, content, function (error, filename, stat, content) {
+        callback(error, content);
+      });
+    };
+  });
+
+  // execute all filetype handlers
+  async.waterfall([
+    function (callback) {
+      callback(null, content);
+    }
+  ].concat(handlers), function (error, content) {
+    callback(error, stat, content);
+  });
+}
+
+// Handle file content and save it
+// callback(error, content)
+function saveCache(self, filename, stat, content, callback) {
+
+  // Update state JSON file
+  updateStat(self, filename, stat);
+
+  // write to cache
+  var filepath = path.resolve(self.options.cache, filename);
+  fs.writeFile(filepath, content, function (error) {
+    callback(error, content);
+  });
+}
+
 // Update the stat
-function updateStat(self, filename, value) {
+function updateStat(self, filename, stat) {
 
   // grap set value
   if (arguments.length === 3) {
-    self.state[filename] = value.getTime();
+    self.state[filename] = { mtime: stat.mtime.getTime(), size: stat.size };
   } else {
     delete self.state[filename];
   }
