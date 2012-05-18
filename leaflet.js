@@ -43,38 +43,36 @@ function Leaflet(options, callback) {
     options[name] = path.resolve(options[name]);
   });
 
-  // Setup progress tracker
-  var track = new ProgressTracker(function (error) {
+  // Check/Create directories
+  createDirectory(options.read, function (error) {
     if (error) return callback(error);
 
-    // No errors we are ready :D
-    self.ready = true;
-    callback();
-  });
-  track.add(['read', 'write', 'stat']);
+    createDirectory(options.write, function (error) {
+      if (error) return callback(error);
 
-  // Check/Create directories
-  createDirectory(options.read, track.set.bind(track, 'read'));
-  createDirectory(options.write, track.set.bind(track, 'write'));
+      createDirectory(path.dirname(options.stat), function (error) {
+        if (error) return callback(error);
 
-  // Read stat file if possibol
-  exists(options.stat, function (exist) {
+        // Read stat file if possibol
+        exists(options.stat, function (exist) {
 
-    // Set stored stat to empty object if the file don't exist
-    if (exist === false) return openStat();
+          // Set stored stat to empty object if the file don't exist
+          if (exist === false) return openStat();
 
-    // Read JSON file
-    fs.readFile(options.stat, 'utf8', function (error, content) {
-      if (error) return track.set('stat', error);
+          // Read JSON file
+          fs.readFile(options.stat, 'utf8', function (error, content) {
 
-      // Parse JSON and catch errors
-      try {
-        self.stat = JSON.parse(content);
-      } catch (error) {
-        return track.set('stat', error);
-      }
+            // Parse JSON and catch errors
+            try {
+              self.stat = JSON.parse(content);
+            } catch (error) {
+              return callback(error);
+            }
 
-      openStat();
+            openStat();
+          });
+        });
+      });
     });
   });
 
@@ -84,12 +82,13 @@ function Leaflet(options, callback) {
 
     function errorFn(error) {
       self.statStream.removeListener('open', openFn);
-      track.set('stat', error);
+      callback(error);
     }
 
     function openFn() {
       self.statStream.removeListener('error', errorFn);
-      track.set('stat');
+      self.ready = true;
+      callback(null);
     }
 
     self.statStream.once('error', errorFn);
@@ -251,7 +250,7 @@ function cleanRead(self, read, filename, callback) {
           if (error) return callback(error, null, null);
 
           // All good, lets update stat cache and send callback
-          fs.writeFile(filename, content, function (error) {
+          fs.writeFile(path.resolve(self.options.write, filename), content, function (error) {
             if (error) return callback(error, null, null);
 
             callback(null, stat, content);
@@ -311,7 +310,7 @@ function updateStat(self, filename, value) {
 
   // grap set value
   if (arguments.length === 3) {
-    self.state[filename] = value;
+    self.state[filename] = value.getTime();
   } else {
     delete self.state[filename];
   }
