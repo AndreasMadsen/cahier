@@ -30,6 +30,6 @@ exports.reset = function () {
 // Combine all options
 exports.options = {
   read: exports.fixture,
-  write: exports.temp,
-  stat: path.resolve(exports.temp, 'stat.json')
+  cache: exports.temp,
+  state: path.resolve(exports.temp, 'state.json')
 };

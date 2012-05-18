@@ -24,8 +24,8 @@ function Leaflet(options, callback) {
   if (options === null ||
       typeof options !== 'object' ||
       typeof options.read !== 'string' ||
-      typeof options.write !== 'string' ||
-      typeof options.stat !== 'string') {
+      typeof options.cache !== 'string' ||
+      typeof options.state !== 'string') {
 
     callback(new Error('options object is not valid'));
     return this;
@@ -42,7 +42,7 @@ function Leaflet(options, callback) {
   Object.keys(options).forEach(function (name) {
     options[name] = path.resolve(options[name]);
   });
-  var folders = [options.read, options.write, path.dirname(options.stat)];
+  var folders = [options.read, options.cache, path.dirname(options.state)];
 
   async.series([
 
@@ -52,13 +52,13 @@ function Leaflet(options, callback) {
     // Read stat file
     function (callback) {
       // Read stat file if possibol
-      exists(options.stat, function (exist) {
+      exists(options.state, function (exist) {
 
         // Set stored stat to empty object if the file don't exist
         if (exist === false) return callback();
 
         // Read JSON file
-        fs.readFile(options.stat, 'utf8', function (error, content) {
+        fs.readFile(options.state, 'utf8', function (error, content) {
 
           // Parse JSON and catch errors
           try {
@@ -74,7 +74,7 @@ function Leaflet(options, callback) {
 
     // Open stat stream
     function (callback) {
-      self.statStream = equilibrium(self.options.stat);
+      self.statStream = equilibrium(self.options.state);
 
       function errorFn(error) {
         self.statStream.removeListener('open', openFn);
@@ -175,7 +175,7 @@ Leaflet.prototype.read = function (filename, callback) {
 
   // resolve read and write filepath
   var read = path.resolve(this.options.read, filename);
-  var write = path.resolve(this.options.write, filename);
+  var write = path.resolve(this.options.cache, filename);
 
   // create or get callback array
   var callbacks = this.query[filename] || (this.query[filename] = []);
@@ -308,7 +308,7 @@ function cleanRead(self, read, filename, callback) {
 
     // All good, lets update stat cache and send callback
     function (stat, content, callback) {
-      var filepath = path.resolve(self.options.write, filename);
+      var filepath = path.resolve(self.options.cache, filename);
       fs.writeFile(filepath, content, function (error) {
         callback(error, stat, content);
       });

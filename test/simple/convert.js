@@ -47,13 +47,13 @@ vows.describe('testing leaflet compiler').addBatch({
     'check that the temp directory was created': function (error, dum) {
       assert.ifError(error);
 
-      assert.isTrue(common.existsSync(common.options.write));
+      assert.isTrue(common.existsSync(common.options.cache));
     },
 
     'check that the stat file was created': function (error, dum) {
       assert.ifError(error);
 
-      assert.isTrue(common.existsSync(common.options.stat));
+      assert.isTrue(common.existsSync(common.options.cache));
     }
   }
 
@@ -79,7 +79,7 @@ vows.describe('testing leaflet compiler').addBatch({
       topic: function () {
         async.parallel({
           'origin': fs.stat.bind(fs, path.resolve(common.options.read, 'static.json')),
-          'cache': fs.readFile.bind(fs, common.options.stat, 'utf8')
+          'cache': fs.readFile.bind(fs, common.options.state, 'utf8')
         }, this.callback);
       },
 
@@ -90,7 +90,7 @@ vows.describe('testing leaflet compiler').addBatch({
 
     'the chached file': {
       topic: function () {
-        fs.readFile(path.resolve(common.options.write, 'static.json'), 'utf8', this.callback);
+        fs.readFile(path.resolve(common.options.cache, 'static.json'), 'utf8', this.callback);
       },
 
       'should be created': function (error, content) {
@@ -113,7 +113,7 @@ vows.describe('testing leaflet compiler').addBatch({
       async.waterfall([
 
         // read cache file
-        fs.readFile.bind(fs, path.resolve(common.options.write, 'static.json'), 'utf8'),
+        fs.readFile.bind(fs, path.resolve(common.options.cache, 'static.json'), 'utf8'),
 
         // manipulate
         function (content, callback) {
@@ -124,7 +124,7 @@ vows.describe('testing leaflet compiler').addBatch({
         },
 
         // overwrite cache file
-        fs.writeFile.bind(fs, path.resolve(common.options.write, 'static.json')),
+        fs.writeFile.bind(fs, path.resolve(common.options.cache, 'static.json')),
 
         // get file using leaflet
         convert.read.bind(convert, '/static.json')
