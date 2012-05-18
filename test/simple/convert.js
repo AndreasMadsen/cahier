@@ -6,6 +6,7 @@
 var vows = require('vows'),
     path = require('path'),
     fs = require('fs'),
+    async = require('async'),
     assert = require('assert'),
     common = require('../common.js'),
     leaflet = require(common.leaflet);
@@ -16,7 +17,7 @@ common.reset();
 var convert;
 vows.describe('testing leaflet compiler').addBatch({
 
-  'setup converter': {
+  'when a leaflet object is created': {
     topic: function () {
       var self = this;
 
@@ -25,14 +26,14 @@ vows.describe('testing leaflet compiler').addBatch({
         if (error) return self.callback(error, null);
 
         // simpel handlers, will add first and second exports properties
-        convert.handle('js', function (content, next) {
+        convert.handle('json', function (content, next) {
           var obj = JSON.parse(content);
               obj.first = 'first';
 
           next( JSON.stringify(obj) );
         });
 
-        convert.handle('js', function (content, next) {
+        convert.handle('json', function (content, next) {
           var obj = JSON.parse(content);
               obj.second = 'second';
 
@@ -43,19 +44,27 @@ vows.describe('testing leaflet compiler').addBatch({
       });
     },
 
-    'check that there was no errors': function (error, dum) {
+    'check that the temp directory was created': function (error, dum) {
       assert.ifError(error);
+
+      assert.isTrue(common.existsSync(common.options.write));
+    },
+
+    'check that the stat file was created': function (error, dum) {
+      assert.ifError(error);
+
+      assert.isTrue(common.existsSync(common.options.stat));
     }
   }
 
 }).addBatch({
 
-  'leaflet read file': {
+  'when reading a file for first time': {
     topic: function () {
-      convert.read('/static.js', this.callback);
+      convert.read('/static.json', this.callback);
     },
 
-    'check read content': function (error, content) {
+    'the content should be parsed by handlers': function (error, content) {
       assert.ifError(error);
 
       assert.deepEqual(JSON.parse(content), {
@@ -64,25 +73,36 @@ vows.describe('testing leaflet compiler').addBatch({
         first: 'first',
         second: 'second'
       });
-    }
-  }
-
-}).addBatch({
-
-  'read drive cached file': {
-    topic: function () {
-      fs.readFile(path.resolve(common.temp, 'static.js'), 'utf8', this.callback);
     },
 
-    'check read content': function (error, content) {
-      assert.ifError(error);
+    'the stat file': {
+      topic: function () {
+        async.parallel({
+          'origin': fs.stat.bind(fs, path.resolve(common.options.read, 'static.json')),
+          'cache': fs.readFile.bind(fs, common.options.stat, 'utf8')
+        }, this.callback);
+      },
 
-      assert.deepEqual(JSON.parse(content), {
-        zero: 'zero',
-        position: 'root',
-        first: 'first',
-        second: 'second'
-      });
+      'should be updated': function (error, result) {
+        assert.equal(result.origin.mtime.getTime(), JSON.parse(result.cache)['static.json']);
+      }
+    },
+
+    'the chached file': {
+      topic: function () {
+        fs.readFile(path.resolve(common.options.write, 'static.json'), 'utf8', this.callback);
+      },
+
+      'should be created': function (error, content) {
+        assert.ifError(error);
+
+        assert.deepEqual(JSON.parse(content), {
+          zero: 'zero',
+          position: 'root',
+          first: 'first',
+          second: 'second'
+        });
+      }
     }
   }
 

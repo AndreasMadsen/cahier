@@ -22,15 +22,9 @@ exports.leaflet = path.resolve(exports.root, 'leaflet.js');
 exports.fixture = path.resolve(exports.test, 'fixture');
 exports.temp = path.resolve(exports.test, 'temp');
 
-// Create temp directory if it don't exist
-if (exports.existsSync(exports.temp) === false) {
-  fs.mkdirSync(exports.temp);
-}
-
 // Reset temp directory
 exports.reset = function () {
   wrench.rmdirSyncRecursive(exports.temp);
-  fs.mkdirSync(exports.temp);
 };
 
 // Combine all options
