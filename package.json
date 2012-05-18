@@ -25,6 +25,7 @@
   ],
   "dependencies": {
     "equilibrium": "0.1.x",
+    "async": "0.1.x",
     "mkdirp": "*"
   },
   "devDependencies": {

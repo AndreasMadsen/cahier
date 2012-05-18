@@ -5,6 +5,7 @@
 
 var fs = require('fs');
 var path = require('path');
+var async = require('async');
 var mkdirp = require('mkdirp');
 var equilibrium = require('equilibrium');
 
@@ -20,7 +21,6 @@ function Leaflet(options, callback) {
   }
 
   // Check options
-
   if (options === null ||
       typeof options !== 'object' ||
       typeof options.read !== 'string' ||
@@ -42,60 +42,57 @@ function Leaflet(options, callback) {
   Object.keys(options).forEach(function (name) {
     options[name] = path.resolve(options[name]);
   });
+  var folders = [options.read, options.write, path.dirname(options.stat)];
 
-  // Check/Create directories
-  createDirectory(options.read, function (error) {
-    if (error) return callback(error);
+  async.series([
 
-    createDirectory(options.write, function (error) {
-      if (error) return callback(error);
+    // Create folders
+    async.forEach.bind(async, folders, createDirectory),
 
-      createDirectory(path.dirname(options.stat), function (error) {
-        if (error) return callback(error);
+    // Read stat file
+    function (callback) {
+      // Read stat file if possibol
+      exists(options.stat, function (exist) {
 
-        // Read stat file if possibol
-        exists(options.stat, function (exist) {
+        // Set stored stat to empty object if the file don't exist
+        if (exist === false) return callback();
 
-          // Set stored stat to empty object if the file don't exist
-          if (exist === false) return openStat();
+        // Read JSON file
+        fs.readFile(options.stat, 'utf8', function (error, content) {
 
-          // Read JSON file
-          fs.readFile(options.stat, 'utf8', function (error, content) {
+          // Parse JSON and catch errors
+          try {
+            self.stat = JSON.parse(content);
+          } catch (error) {
+            return callback(error);
+          }
 
-            // Parse JSON and catch errors
-            try {
-              self.stat = JSON.parse(content);
-            } catch (error) {
-              return callback(error);
-            }
-
-            openStat();
-          });
+          callback();
         });
       });
-    });
-  });
+    },
 
-  // Open stat stream
-  function openStat() {
-    self.statStream = equilibrium(self.options.stat);
+    // Open stat stream
+    function (callback) {
+      self.statStream = equilibrium(self.options.stat);
 
-    function errorFn(error) {
-      self.statStream.removeListener('open', openFn);
-      callback(error);
+      function errorFn(error) {
+        self.statStream.removeListener('open', openFn);
+        callback(error);
+      }
+
+      function openFn() {
+        self.statStream.removeListener('error', errorFn);
+        self.ready = true;
+        callback(null);
+      }
+
+      self.statStream.once('error', errorFn);
+      self.statStream.once('open', openFn);
+
+      self.statStream.open();
     }
-
-    function openFn() {
-      self.statStream.removeListener('error', errorFn);
-      self.ready = true;
-      callback(null);
-    }
-
-    self.statStream.once('error', errorFn);
-    self.statStream.once('open', openFn);
-
-    self.statStream.open();
-  }
+  ], callback);
 }
 module.exports = function (options, callback) {
   return new Leaflet(options, callback);
@@ -243,30 +240,32 @@ Leaflet.prototype.watch = function (callback) {
 
 // run file handlers
 function handleFile(self, filename, content, callback) {
+
+  // get filetype handlers
   var ext = path.extname(filename).slice(1);
+  var handlers = (self.handlers[ext] || self.handlers['*']);
 
-  var handlers = (self.handlers[ext] || self.handlers['*'] || []).slice();
+  // Skip parseing if there are no handlers
+  if (handlers === undefined) {
+    callback(null, content);
+  }
 
-  (function execute() {
-    // get the first/next handler
-    var handle = handlers.shift();
+  // Wrap handlers so they take both error and content as first argument
+  handlers = handlers.map(function (handle) {
+    return function (content, callback) {
+      handle(content, function (result) {
+        if (result instanceof Error) return callback(result, null);
+        callback(null, result);
+      });
+    };
+  });
 
-    // done, no more handlers
-    if (handle === undefined) return callback(null, content);
-
-    // execute handle
-    handle(content, function (respons) {
-      if (respons instanceof Error) {
-        return callback(respons, null);
-      }
-
-      // Update content in outer scope
-      content = respons;
-
-      // execute next handler
-      execute();
-    });
-  })();
+  // execute all filetype handlers
+  async.waterfall([
+    function (callback) {
+      callback(null, content);
+    }
+  ].concat(handlers), callback);
 }
 
 // Execute callback stack
@@ -279,30 +278,42 @@ function executeCallbacks(callbacks, error, content) {
 
 // make a clean read
 function cleanRead(self, read, filename, callback) {
-  fs.open(read, 'r', function (error, fd) {
-    if (error) return callback(error, null, null);
+  async.waterfall([
+    // open fd
+    function (callback) {
+      fs.open(read, 'r', callback);
+    },
 
-    fs.fstat(fd, function (error, stat) {
-      if (error) return callback(error, null, null);
+    // read file stat
+    function (fd, callback) {
+      fs.fstat(fd, function (error, stat) {
+        callback(error, fd, stat);
+      });
+    },
 
+    // read file content
+    function (fd, stat, callback) {
       var buffer = new Buffer(stat.size);
       fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
-        if (error) return callback(error, null, null);
-
-        // run file handlers
-        handleFile(self, filename, buffer.toString(), function (error, content) {
-          if (error) return callback(error, null, null);
-
-          // All good, lets update stat cache and send callback
-          fs.writeFile(path.resolve(self.options.write, filename), content, function (error) {
-            if (error) return callback(error, null, null);
-
-            callback(null, stat, content);
-          });
-        });
+        callback(error, stat, buffer);
       });
-    });
-  });
+    },
+
+    // convert buffer handlers
+    function (stat, buffer, callback) {
+      handleFile(self, filename, buffer.toString(), function (error, content) {
+        callback(error, stat, content);
+      });
+    },
+
+    // All good, lets update stat cache and send callback
+    function (stat, content, callback) {
+      var filepath = path.resolve(self.options.write, filename);
+      fs.writeFile(filepath, content, function (error) {
+        callback(error, stat, content);
+      });
+    }
+  ], callback);
 }
 
 // Update the stat
