@@ -106,4 +106,43 @@ vows.describe('testing leaflet compiler').addBatch({
     }
   }
 
+}).addBatch({
+
+  'when reading a file second time': {
+    topic: function () {
+      async.waterfall([
+
+        // read cache file
+        fs.readFile.bind(fs, path.resolve(common.options.write, 'static.json'), 'utf8'),
+
+        // manipulate
+        function (content, callback) {
+          var obj = JSON.parse(content);
+              obj.manipulated = true;
+
+          callback(null, JSON.stringify(obj));
+        },
+
+        // overwrite cache file
+        fs.writeFile.bind(fs, path.resolve(common.options.write, 'static.json')),
+
+        // get file using leaflet
+        convert.read.bind(convert, '/static.json')
+
+      ], this.callback);
+    },
+
+    'the content should be read from cache directory': function (error, content) {
+      assert.ifError(error);
+
+      assert.deepEqual(JSON.parse(content), {
+        zero: 'zero',
+        position: 'root',
+        first: 'first',
+        second: 'second',
+        manipulated: true
+      });
+    }
+  }
+
 }).exportTo(module);
