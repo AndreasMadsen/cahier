@@ -225,42 +225,6 @@ Leaflet.prototype.read = function (filename, callback) {
   })();
 };
 
-// Execute callback stack
-function executeCallbacks(callbacks, error, content) {
-  var fn;
-  while (fn = callbacks.shift()) {
-    fn(error, content);
-  }
-}
-
-// make a clean read
-function cleanRead(self, read, filename, callback) {
-  fs.open(read, 'r', function (error, fd) {
-    if (error) return callback(error, null, null);
-
-    fs.fstat(fd, function (error, stat) {
-      if (error) return callback(error, null, null);
-
-      var buffer = new Buffer(stat.size);
-      fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
-        if (error) return callback(error, null, null);
-
-        // run file handlers
-        handleFile(self, filename, buffer.toString(), function (error, content) {
-          if (error) return callback(error, null, null);
-
-          // All good, lets update stat cache and send callback
-          fs.writeFile(path.resolve(self.options.write, filename), content, function (error) {
-            if (error) return callback(error, null, null);
-
-            callback(null, stat, content);
-          });
-        });
-      });
-    });
-  });
-}
-
 // Find all files in `read` and process them all
 Leaflet.prototype.compile = function (callback) {
   if (this.ready === false) {
@@ -305,6 +269,42 @@ function handleFile(self, filename, content, callback) {
   })();
 }
 
+// Execute callback stack
+function executeCallbacks(callbacks, error, content) {
+  var fn;
+  while (fn = callbacks.shift()) {
+    fn(error, content);
+  }
+}
+
+// make a clean read
+function cleanRead(self, read, filename, callback) {
+  fs.open(read, 'r', function (error, fd) {
+    if (error) return callback(error, null, null);
+
+    fs.fstat(fd, function (error, stat) {
+      if (error) return callback(error, null, null);
+
+      var buffer = new Buffer(stat.size);
+      fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
+        if (error) return callback(error, null, null);
+
+        // run file handlers
+        handleFile(self, filename, buffer.toString(), function (error, content) {
+          if (error) return callback(error, null, null);
+
+          // All good, lets update stat cache and send callback
+          fs.writeFile(path.resolve(self.options.write, filename), content, function (error) {
+            if (error) return callback(error, null, null);
+
+            callback(null, stat, content);
+          });
+        });
+      });
+    });
+  });
+}
+
 // Update the stat
 function updateStat(self, filename, value) {
 
@@ -318,33 +318,6 @@ function updateStat(self, filename, value) {
   // save JSON file
   self.statStream.write(JSON.stringify(self.state));
 }
-
-// Extremely simple progress tracker
-function ProgressTracker(callback) {
-  this.list = [];
-  this.callback = callback;
-  this.called = false;
-  this.error = null;
-}
-exports.ProgressTracker = ProgressTracker;
-
-ProgressTracker.prototype.add = function (list) {
-  if (!Array.isArray(list)) list = [list];
-  this.list = this.list.concat(list);
-};
-ProgressTracker.prototype.set = function(name, error) {
-  this.list.splice(this.list.indexOf(name), 1);
-  this.error = error;
-  this.check();
-};
-ProgressTracker.prototype.check = function() {
-  if (this.called) return;
-
-  if (this.error || this.list.length === 0) {
-    this.called = true;
-    this.callback(this.error);
-  }
-};
 
 // Check if directory exist and create if not
 function createDirectory(dirpath, callback) {
