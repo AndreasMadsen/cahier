@@ -37,6 +37,7 @@ function Leaflet(options, callback) {
   this.memory = 0;
   this.state = {};
   this.query = {};
+  this.watching = false;
 
   // Resolve filepaths and dirpaths
   Object.keys(options).forEach(function (name) {
@@ -44,7 +45,7 @@ function Leaflet(options, callback) {
   });
   var folders = [options.read, options.cache, path.dirname(options.state)];
 
-  async.series([
+  async.waterfall([
 
     // Create folders
     async.forEach.bind(async, folders, createDirectory),
@@ -190,22 +191,45 @@ Leaflet.prototype.read = function (filename, callback) {
 
   // Try reading data from disk cache
   if (this.state[filename]) {
+
+    // check if source has been modified
+    if (this.watching) {
+      fs.stat(read, function (error, stat) {
+        if (error) {
+          updateStat(self, filename);
+          return callback(error, null, null);
+        }
+
+        // source has been modified, read from source
+        if (stat.mtime.getTime() > self.state[filename]) {
+          return readSource();
+        }
+
+        // source has not been modified, read from cache
+        return readCache();
+
+      });
+
+    } else {
+      return readCache();
+    }
+  }
+
+  function readCache() {
     fs.readFile(write, 'utf8', function (error, content) {
 
       // in case there was an error, make a clean read
       if (error) {
         updateStat(self, filename);
-        return beginReading();
+        return readSource();
       }
 
       // Execute all callbacks
       executeCallbacks(callbacks, null, content);
     });
-
-    return;
   }
 
-  (function beginReading() {
+  function readSource() {
     cleanRead(self, read, filename, function (error, stat, content) {
       // In case there was an error, remove file from stat and send error to all callbacks
       if (error) {
@@ -219,7 +243,9 @@ Leaflet.prototype.read = function (filename, callback) {
       // Execute all callbacks
       executeCallbacks(callbacks, null, content);
     });
-  })();
+  }
+
+  readSource();
 };
 
 // Find all files in `read` and process them all
@@ -236,6 +262,9 @@ Leaflet.prototype.watch = function (callback) {
   if (this.ready === false) {
     return callback(new Error('leaflet object is not ready'));
   }
+
+  this.watching = true;
+  return callback();
 };
 
 // run file handlers

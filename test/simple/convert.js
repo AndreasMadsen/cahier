@@ -15,42 +15,47 @@ var vows = require('vows'),
 common.reset();
 
 var convert;
-vows.describe('testing leaflet compiler').addBatch({
+vows.describe('testing leaflet converter').addBatch({
 
   'when a leaflet object is created': {
     topic: function () {
-      var self = this;
-
       // create convert object
-      convert = leaflet(common.options, function (error) {
-        if (error) return self.callback(error, null);
+      async.series([
 
-        // simpel handlers, will add first and second exports properties
-        convert.handle('json', function (content, next) {
-          var obj = JSON.parse(content);
-              obj.first = 'first';
+        // create leaflet object
+        function (callback) {
+          convert = leaflet(common.options, callback);
+        },
 
-          next( JSON.stringify(obj) );
-        });
+        // setup leaflet object
+        function (callback) {
+          // simpel handlers, will add first and second exports properties
+          convert.handle('json', function (content, next) {
+            var obj = JSON.parse(content);
+                obj.first = 'first';
 
-        convert.handle('json', function (content, next) {
-          var obj = JSON.parse(content);
-              obj.second = 'second';
+            next( JSON.stringify(obj) );
+          });
 
-          next( JSON.stringify(obj) );
-        });
+          convert.handle('json', function (content, next) {
+            var obj = JSON.parse(content);
+                obj.second = 'second';
 
-        self.callback(null, null);
-      });
+            next( JSON.stringify(obj) );
+          });
+
+          callback(null);
+        }
+      ], this.callback);
     },
 
-    'check that the temp directory was created': function (error, dum) {
+    'check that the cache directory was created': function (error, dum) {
       assert.ifError(error);
 
       assert.isTrue(common.existsSync(common.options.cache));
     },
 
-    'check that the stat file was created': function (error, dum) {
+    'check that the state file was created': function (error, dum) {
       assert.ifError(error);
 
       assert.isTrue(common.existsSync(common.options.cache));
