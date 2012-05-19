@@ -12,6 +12,9 @@ var equilibrium = require('equilibrium');
 // node < 0.8 compatibility
 var exists = fs.exists || path.exists;
 
+// platform compatibility
+var dirSplit = process.platform === 'win32' ? '\\' : '/';
+
 function Leaflet(options, callback) {
   var self = this;
 
@@ -32,12 +35,18 @@ function Leaflet(options, callback) {
   }
 
   this.options = options;
-  this.handlers = {};
   this.ready = false;
+
+  this.watching = false;
   this.memory = 0;
+
   this.state = {};
   this.query = {};
-  this.watching = false;
+  this.ignorefiles = {
+    'filepath': [],
+    'filename': []
+  };
+  this.handlers = {};
 
   // Resolve filepaths and dirpaths
   Object.keys(options).forEach(function (name) {
@@ -200,6 +209,20 @@ Leaflet.prototype.read = function (filename, callback) {
   var read = path.resolve(this.options.read, filename);
   var write = path.resolve(this.options.cache, filename);
 
+  // check ignorefiles list
+  if (this.ignorefiles.filepath.indexOf( filename ) !== -1 ||
+      this.ignorefiles.filename.indexOf( path.basename(filename) ) !== -1) {
+
+    var error = new Error("ENOENT, open '" + read + "'");
+        error.errno = 34;
+        error.code = 'ENOENT';
+        error.path = read;
+        error.ignored = true;
+
+    return callback(error, null);
+  }
+
+
   // create or get callback array
   var callbacks = this.query[filename] || (this.query[filename] = []);
 
@@ -273,6 +296,18 @@ Leaflet.prototype.read = function (filename, callback) {
     }
 
   readSource();
+};
+
+// Add a file to the ignore list, if the `read` request match it we will claim that it don't exist
+Leaflet.prototype.ignore = function (filename) {
+
+  // If this is a specific file, convert it to an absolute path
+  if (filename.indexOf(dirSplit) !== -1) {
+    this.ignorefiles.filepath.push( trimPath(filename) );
+    return;
+  }
+
+  this.ignorefiles.filename.push(path.basename(filename));
 };
 
 // Find all files in `read` and process them all
@@ -449,7 +484,6 @@ function createDirectory(dirpath, callback) {
 }
 
 // Trim path safely
-var dirSplit = process.platform === 'win32' ? '\\' : '/';
 var ignorePaths = ['', '.', '..'];
 function trimPath(filepath) {
 
