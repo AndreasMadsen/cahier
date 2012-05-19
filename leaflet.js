@@ -130,7 +130,24 @@ Leaflet.prototype.handle = function () {
   var args = Array.prototype.slice.call(arguments);
 
   // grap handle function
-  var handle = args.pop();
+  var method = args.pop();
+  var prop = typeof method === 'string' ? 'chain': 'fn';
+
+  // modify handle function so it takes both error and content as first argument
+  var handle;
+  if (prop === 'fn') {
+    handle = function (content, next) {
+      method(content, function (result) {
+        if (result instanceof Error) {
+          return next(result, null);
+        }
+
+        return next(null, result);
+      });
+    };
+  } else {
+    handle = method;
+  }
 
   // get universial handlers and create as empty object if it don't exist
   var allHandlers = self.handlers['*'] || (self.handlers['*'] = []);
@@ -143,7 +160,10 @@ Leaflet.prototype.handle = function () {
   // attach universial handle to already existing file handlers and allHandlers
   if (filetypes.length === 0) {
     Object.keys(this.handlers).forEach(function (type) {
-      self.handlers[type].push(handle);
+      var obj = { 'type': null };
+          obj[prop] = handle;
+
+      self.handlers[type].push(obj);
     });
 
     return;
@@ -158,7 +178,9 @@ Leaflet.prototype.handle = function () {
     var handlers = self.handlers[type] || (self.handlers[type] = allHandlers.slice());
 
     // attach handle function
-    handlers.push(handle);
+    var obj = { 'type': type };
+        obj[prop] = handle;
+    handlers.push(obj);
   });
 };
 
@@ -311,34 +333,14 @@ function readSourceFile(self, filename, callback) {
 // callback(error, stat, content)
 function parseContent(self, filename, stat, content, callback) {
 
-  // get filetype handlers
+  // get filetype
   var ext = path.extname(filename).slice(1);
-  var handlers = (self.handlers[ext] || self.handlers['*']);
 
-  // Skip parseing if there are no handlers
-  if (handlers === undefined) {
-    callback(null, filename, stat, content);
-  }
+  // resolve filename
+  filename = filename.substr(0, filename.length - path.extname(filename).length) + '.' + resolveExt(self, ext);
 
-  // Wrap handlers so they take both error and content as first argument
-  handlers = handlers.map(function (handle) {
-    return function (content, callback) {
-
-      // modify filename so it match the new filetype
-      if (typeof handle === 'function') {
-        return handle(content, function (result) {
-          if (result instanceof Error) return callback(result, null);
-          callback(null, result);
-        });
-      }
-
-      // parse as new handler
-      filename = filename.substr(0, filename.length - path.extname(filename)) + '.' + handle;
-      parseContent(self, filename, stat, content, function (error, filename, stat, content) {
-        callback(error, content);
-      });
-    };
-  });
+  // resolve handlers
+  var handlers = resolveHandlers(self, ext);
 
   // execute all filetype handlers
   async.waterfall([
@@ -348,6 +350,61 @@ function parseContent(self, filename, stat, content, callback) {
   ].concat(handlers), function (error, content) {
     callback(error, filename, stat, content);
   });
+}
+
+function resolveHandlers(self, ext, ignore) {
+
+  // get source handlers
+  var source = [];
+  if (self.handlers[ext]) {
+    source = self.handlers[ext];
+  } else if (self.handlers['*'] && !ignore) {
+    source = self.handlers['*'];
+  }
+
+  // will contain all handlers including resolved subhandlers
+  var handlers = [];
+
+  source.forEach(function (handle) {
+    // ignore univerisal handlers
+    if (ignore && handle.type === null) return;
+
+    // Apply chain subhandlers to array
+    if (handle.chain) {
+      handlers.push.apply(handlers, resolveHandlers(self, handle.chain, true));
+      return;
+    }
+
+    // Apply normal handlers
+    handlers.push(handle.fn);
+  });
+
+  return handlers;
+}
+
+function resolveExt(self, ext, ignore) {
+
+  // get source handlers
+  var source = [];
+  if (self.handlers[ext]) {
+    source = self.handlers[ext];
+  } else if (self.handlers['*'] && !ignore) {
+    source = self.handlers['*'];
+  }
+
+  // search all filehandlers
+  var i = source.length;
+  while(i--) {
+    // ignore univerisal handlers
+    if (ignore && source[i].type === null) continue;
+
+    // found a chain resolve that
+    if (source[i].chain) {
+      return resolveExt(self, source[i].chain, true);
+    }
+  }
+
+  return ext;
 }
 
 // Handle file content and save it
