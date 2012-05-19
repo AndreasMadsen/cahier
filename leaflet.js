@@ -232,10 +232,10 @@ Leaflet.prototype.read = function (filename, callback) {
       readSourceFile.bind(null, self, filename),
 
       // parse content though the handlers
-      parseContent.bind(null, self, filename),
+      parseContent.bind(null, self),
 
       // save in drive cache
-      saveCache.bind(null, self, filename)
+      saveCache.bind(null, self)
 
     ], done);
   }
@@ -301,7 +301,7 @@ function readSourceFile(self, filename, callback) {
     function (fd, stat, callback) {
       var buffer = new Buffer(stat.size);
       fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
-        callback(error, stat, buffer.toString());
+        callback(error, filename, stat, buffer.toString());
       });
     }
   ], callback);
@@ -317,7 +317,7 @@ function parseContent(self, filename, stat, content, callback) {
 
   // Skip parseing if there are no handlers
   if (handlers === undefined) {
-    callback(null, stat, content);
+    callback(null, filename, stat, content);
   }
 
   // Wrap handlers so they take both error and content as first argument
@@ -346,7 +346,7 @@ function parseContent(self, filename, stat, content, callback) {
       callback(null, content);
     }
   ].concat(handlers), function (error, content) {
-    callback(error, stat, content);
+    callback(error, filename, stat, content);
   });
 }
 
