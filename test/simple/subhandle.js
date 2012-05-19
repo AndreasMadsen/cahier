@@ -34,12 +34,10 @@ vows.describe('testing leaflet converter').addBatch({
             return function (content, next) {
               var obj;
 
-              console.log(content);
-
               if (content.indexOf('[') === 0) {
                 obj = JSON.parse(content);
               } else {
-                obj = [content];
+                obj = [{type: content, state: 0}];
               }
 
               obj.push(message);
@@ -49,8 +47,16 @@ vows.describe('testing leaflet converter').addBatch({
           }
 
           convert.handle('txt', handle( { type: 'txt', state: 1 } ));
+          convert.handle('txt', 'txt2');
           convert.handle('txt', 'js');
           convert.handle('txt', handle( { type: 'txt', state: 2 } ));
+
+          convert.handle('txt2', handle( { type: 'txt2', state: 1 } ));
+          convert.handle('txt2', 'txt3');
+          convert.handle('txt2', handle( { type: 'txt2', state: 2 } ));
+
+          convert.handle('txt3', handle( { type: 'txt3', state: 1 } ));
+          convert.handle('txt3', handle( { type: 'txt3', state: 2 } ));
 
           convert.handle('js', handle( { type: 'js', state: 1 } ));
           convert.handle('js', 'json');
@@ -58,6 +64,8 @@ vows.describe('testing leaflet converter').addBatch({
 
           convert.handle('json', handle( { type: 'json', state: 1 } ));
           convert.handle('json', handle( { type: 'json', state: 2 } ));
+
+          convert.handle(handle( { type: '*', state: 3 } ));
 
           callback(null);
         }
@@ -80,13 +88,20 @@ vows.describe('testing leaflet converter').addBatch({
       assert.ifError(error);
 
       assert.deepEqual(JSON.parse(content), [
-        'source',
-        {type: 'txt',  state: 1},
-        {type: 'js',   state: 1},
-        {type: 'json', state: 1},
-        {type: 'json', state: 2},
-        {type: 'js',   state: 2},
-        {type: 'txt',  state: 2}
+        {type: 'source', state: 0},
+        {type: 'txt',    state: 1},
+
+        {type: 'txt2',   state: 1},
+        {type: 'txt3',   state: 1},
+        {type: 'txt3',   state: 2},
+        {type: 'txt2',   state: 2},
+
+        {type: 'js',     state: 1},
+        {type: 'json',   state: 1},
+        {type: 'json',   state: 2},
+        {type: 'js',     state: 2},
+
+        {type: 'txt',    state: 2}
       ]);
     },
 
@@ -99,14 +114,21 @@ vows.describe('testing leaflet converter').addBatch({
         assert.ifError(error);
 
         assert.deepEqual(JSON.parse(content), [
-          'source',
-          {type: 'txt',  state: 1},
-          {type: 'js',   state: 1},
-          {type: 'json', state: 1},
-          {type: 'json', state: 2},
-          {type: 'js',   state: 2},
-          {type: 'txt',  state: 2}
-        ]);
+          {type: 'source', state: 0},
+          {type: 'txt',    state: 1},
+
+          {type: 'txt2',   state: 1},
+          {type: 'txt3',   state: 1},
+          {type: 'txt3',   state: 2},
+          {type: 'txt2',   state: 2},
+
+          {type: 'js',     state: 1},
+          {type: 'json',   state: 1},
+          {type: 'json',   state: 2},
+          {type: 'js',     state: 2},
+
+          {type: 'txt',    state: 2}
+       ]);
       }
     }
   }
