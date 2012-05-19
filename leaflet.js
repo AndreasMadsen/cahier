@@ -408,9 +408,5 @@ function trimPath(filepath) {
   // combine filepath
   filepath = filepath.join(dirSplit);
 
-  // remove ./ and / too
-  if (filepath[0] === '.') filepath = filepath.slice(1);
-  if (filepath[0] === dirSplit) filepath = filepath.slice(1);
-
   return filepath;
 }
