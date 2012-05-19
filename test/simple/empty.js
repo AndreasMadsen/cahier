@@ -15,7 +15,7 @@ var vows = require('vows'),
 common.reset();
 
 var convert;
-vows.describe('testing leaflet converter').addBatch({
+vows.describe('testing leaflet when reading empty file').addBatch({
 
   'when a leaflet object is created': {
     topic: function () {

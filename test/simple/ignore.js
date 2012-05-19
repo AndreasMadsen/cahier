@@ -35,7 +35,7 @@ function matchError(error, filename) {
 }
 
 var convert;
-vows.describe('testing leaflet converter').addBatch({
+vows.describe('testing leaflet ignore').addBatch({
 
   'when a leaflet object is created': {
     topic: function () {
