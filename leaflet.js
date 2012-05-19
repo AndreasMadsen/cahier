@@ -356,6 +356,13 @@ function readSourceFile(self, filename, callback) {
 
     // read file content
     function (fd, stat, callback) {
+
+      // optimize in case of empty file
+      if (stat.size === 0) {
+        return callback(null, filename, stat, '');
+      }
+
+      // read file content intro buffer
       var buffer = new Buffer(stat.size);
       fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
         callback(error, filename, stat, buffer.toString());
