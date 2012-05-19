@@ -375,7 +375,7 @@ function updateStat(self, filename, stat) {
   }
 
   // save JSON file
-  self.statStream.write(JSON.stringify(self.state));
+  self.statStream.write(self.state);
 }
 
 // Check if directory exist and create if not
