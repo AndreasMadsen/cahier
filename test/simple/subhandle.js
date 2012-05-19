@@ -101,7 +101,8 @@ vows.describe('testing leaflet converter').addBatch({
         {type: 'json',   state: 2},
         {type: 'js',     state: 2},
 
-        {type: 'txt',    state: 2}
+        {type: 'txt',    state: 2},
+        {type: '*',      state: 3}
       ]);
     },
 
@@ -127,7 +128,8 @@ vows.describe('testing leaflet converter').addBatch({
           {type: 'json',   state: 2},
           {type: 'js',     state: 2},
 
-          {type: 'txt',    state: 2}
+          {type: 'txt',    state: 2},
+          {type: '*',      state: 3}
        ]);
       }
     }
