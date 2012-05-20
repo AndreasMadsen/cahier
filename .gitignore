@@ -1,6 +1,6 @@
 
 /node_modules/
 /test/temp/
-/temp/fixture/change.json
+/test/fixture/change.json
 npm-debug.log
 
