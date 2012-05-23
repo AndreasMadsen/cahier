@@ -54,7 +54,7 @@ function Leaflet(options, callback) {
   });
   var folders = [options.read, options.cache, path.dirname(options.state)];
 
-  async.waterfall([
+  async.series([
 
     // Create folders
     async.forEach.bind(async, folders, createDirectory),
