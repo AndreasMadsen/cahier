@@ -4,16 +4,21 @@
  */
 
 var fs = require('fs');
+var util = require('util');
 var path = require('path');
 var async = require('async');
 var mkdirp = require('mkdirp');
 var equilibrium = require('equilibrium');
+var Stream = require('stream');
 
 // node < 0.8 compatibility
 var exists = fs.exists || path.exists;
 
 // platform compatibility
 var dirSplit = process.platform === 'win32' ? '\\' : '/';
+
+// chunk size
+var chunkSize = 64 * 1024;
 
 function Leaflet(options, callback) {
   var self = this;
@@ -41,7 +46,6 @@ function Leaflet(options, callback) {
   this.memory = 0;
 
   this.state = {};
-  this.query = {};
   this.ignorefiles = {
     'filepath': [],
     'filename': []
@@ -134,45 +138,32 @@ Leaflet.prototype.memory = function (size) {
 };
 
 // Attach handler to given filetypes
-Leaflet.prototype.handle = function () {
+Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
   var self = this;
   var args = Array.prototype.slice.call(arguments);
 
   // grap handle function
   var method = args.pop();
-  var prop = typeof method === 'string' ? 'chain': 'fn';
-
-  // modify handle function so it takes both error and content as first argument
-  var handle;
-  if (prop === 'fn') {
-    handle = function (content, next) {
-      method(content, function (result) {
-        if (result instanceof Error) {
-          return next(result, null);
-        }
-
-        return next(null, result);
-      });
-    };
-  } else {
-    handle = method;
-  }
+  var options = args.pop();
+  var filetypes = args.pop();
 
   // get universial handlers and create as empty object if it don't exist
   var allHandlers = self.handlers['*'] || (self.handlers['*'] = []);
 
   // convert filetype to lowercase
-  var filetypes = args.map(function (value) {
+  filetypes = args.map(function (value) {
     return value.toLowerCase();
   });
 
   // attach universial handle to already existing file handlers and allHandlers
   if (filetypes.length === 0) {
     Object.keys(this.handlers).forEach(function (type) {
-      var obj = { 'type': null };
-          obj[prop] = handle;
-
-      self.handlers[type].push(obj);
+      self.handlers[type].push({
+        'type': null,
+        'input': options.input,
+        'output': options.output,
+        'method': method
+      });
     });
 
     return;
@@ -187,9 +178,12 @@ Leaflet.prototype.handle = function () {
     var handlers = self.handlers[type] || (self.handlers[type] = allHandlers.slice());
 
     // attach handle function
-    var obj = { 'type': type };
-        obj[prop] = handle;
-    handlers.push(obj);
+    handlers.push({
+      'type': type,
+      'input': options.input,
+      'output': options.output,
+      'method': method
+    });
   });
 };
 
@@ -206,96 +200,59 @@ Leaflet.prototype.read = function (filename, callback) {
   filename = trimPath(filename);
 
   // resolve read and write filepath
-  var read = path.resolve(this.options.read, filename);
-  var write = path.resolve(this.options.cache, filename);
+  var source = path.resolve(this.options.source, filename);
+  var cache = path.resolve(this.options.cache, filename);
 
   // check ignorefiles list
   if (this.ignorefiles.filepath.indexOf( filename ) !== -1 ||
       this.ignorefiles.filename.indexOf( path.basename(filename) ) !== -1) {
 
-    var error = new Error("ENOENT, open '" + read + "'");
-        error.errno = 34;
-        error.code = 'ENOENT';
-        error.path = read;
-        error.ignored = true;
-
-    return callback(error, null);
-  }
-
-
-  // create or get callback array
-  var callbacks = this.query[filename] || (this.query[filename] = []);
-
-  // append this callback to the stack
-  callbacks.push(callback);
-
-  // Just wait if fs.read is in progress
-  if (callback.length > 1) {
-    return;
-  }
-
-  // Try reading data from disk cache
-  if (this.state[filename]) {
-
-    // check if source has been modified
-    if (this.watching) {
-      fs.stat(read, function (error, stat) {
-        if (error) {
-          updateStat(self, filename);
-          return callback(error, null);
-        }
-
-        // source has been modified, read from source
-        var cache = self.state[filename];
-        if (stat.mtime.getTime() > cache.mtime || stat.size !== cache.size) {
-          return readSource();
-        }
-
-        // source has not been modified, read from cache
-        return readCache();
-      });
-
-    } else {
-      return readCache();
-    }
-  }
-
-  function readCache() {
-    fs.readFile(write, 'utf8', function (error, content) {
-      if (error) {
-        updateStat(self, filename);
-        return readSource();
-      }
-
-      return done(error, content);
+    return streamError("ENOENT, open '" + source + "'", {
+      errno: 34,
+      code: 'ENOENT',
+      path: source,
+      ignored: true
     });
   }
 
-  function readSource() {
-    async.waterfall([
-      // read from source directory
-      readSourceFile.bind(null, self, filename),
-
-      // parse content though the handlers
-      parseContent.bind(null, self),
-
-      // save in drive cache
-      saveCache.bind(null, self)
-
-    ], done);
+  // just read from cache
+  if (this.state[filename] && !this.watching) {
+    return fs.createReadStream(cache, { bufferSize: chunkSize });
   }
 
-  function done(error, content) {
-      if (error) {
-        updateStat(self, filename);
-        return executeCallbacks(callbacks, error, null);
-      }
+  // create a relay stream since async handling will be needed
+  var stream = new RelayStream();
 
-      // Execute all callbacks
-      executeCallbacks(callbacks, null, content);
+  // just read from source
+  if (!this.watching) {
+
+    process.nextTick(function () {
+      compileSource(self, filename, source, cache, stream);
+    });
+
+    // return relay stream, content will be relayed to this shortly
+    return stream;
+  }
+
+  // check source file for modification
+  fs.stat(source, function (error, stat) {
+    if (error) {
+      updateStat(self, filename);
+      return callback(error, null);
     }
 
-  readSource();
+    // source has been modified, read from source
+    var cache = self.state[filename];
+    if (stat.mtime.getTime() > cache.mtime || stat.size !== cache.size) {
+      return compileSource(self, filename, source, cache, stream);
+    }
+
+    // source has not been modified, read from cache
+    fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(stream);
+  });
+
+  // return relay stream, content will be relayed to this shortly
+  return stream;
 };
 
 // Add a file to the ignore list, if the `read` request match it we will claim that it don't exist
@@ -329,72 +286,255 @@ Leaflet.prototype.watch = function (callback) {
   return callback();
 };
 
-// Execute callback stack
-function executeCallbacks(callbacks, error, content) {
-  var fn;
-  while (fn = callbacks.shift()) {
-    fn(error, content);
+function createHandleWrap(compiler, inputType, outputType) {
+  var convert = convertHandlers[inputType][outputType];
+
+  return function (input, callback) {
+    convert(input, function (error, input) {
+      if (error) return callback(error, null);
+
+      compiler(input, function (result) {
+        if (result instanceof Error) {
+          return callback(result, null);
+        }
+
+        callback(null, input);
+      });
+    });
+  };
+}
+
+var convertHandlers = {
+  'buffer': {
+    'buffer': function (input, callback) {
+      callback(null, input);
+    },
+
+    'string': function (input, callback) {
+      callback(null, input.toString());
+    },
+
+    'stream': function (input, callback) {
+      callback(null, new Buffer2stream(input));
+    }
+  },
+
+  'string': {
+    'buffer': function (input, callback) {
+      callback(null, input);
+    },
+
+    'string': function (input, callback) {
+      callback(null, input.toString());
+    },
+
+    'stream': function (input, callback) {
+      callback(null, new Buffer2stream(input));
+    }
+  },
+
+  'stream': {
+    'buffer': function (input, callback) {
+      stream2buffer(input, callback);
+    },
+
+    'string': function (input, callback) {
+      stream2buffer(input, function (error, input) {
+        callback(error, input && input.toString());
+      });
+    },
+
+    'stream': function (input, callback) {
+      callback(null, input);
+    }
   }
-}
+};
 
-// make a clean read
-// callback(error, stat, content)
-function readSourceFile(self, filename, callback) {
-  async.waterfall([
-    // open fd
-    function (callback) {
-      var filepath = path.resolve(self.options.read, filename);
-      fs.open(filepath, 'r', callback);
-    },
+function stream2buffer(input, callback) {
+  var size = 0;
+  var content = [];
+  var called = true;
 
-    // read file stat
-    function (fd, callback) {
-      fs.fstat(fd, function (error, stat) {
-        callback(error, fd, stat);
-      });
-    },
-
-    // read file content
-    function (fd, stat, callback) {
-
-      // optimize in case of empty file
-      if (stat.size === 0) {
-        return callback(null, filename, stat, '');
-      }
-
-      // read file content intro buffer
-      var buffer = new Buffer(stat.size);
-      fs.read(fd, buffer, 0, buffer.length, 0, function (error) {
-        callback(error, filename, stat, buffer.toString());
-      });
+  input.on('data', function (chunk) {
+    if (typeof chunk === 'string') {
+      chunk = Buffer.isBuffer(chunk);
     }
-  ], callback);
-}
 
-// run file handlers
-// callback(error, stat, content)
-function parseContent(self, filename, stat, content, callback) {
+    size += chunk.length;
+    content.push(chunk);
+  });
 
-  // get filetype
-  var ext = path.extname(filename).slice(1);
+  input.on('error', function (error) {
+    if (!called) callback(error, null);
+  });
 
-  // resolve filename
-  filename = filename.substr(0, filename.length - path.extname(filename).length) + '.' + resolveExt(self, ext);
+  input.on('end', function () {
+    var buffer = new Buffer(size);
+    var i = content.length;
+    var pos = size;
+    var from;
 
-  // resolve handlers
-  var handlers = resolveHandlers(self, ext);
-
-  // execute all filetype handlers
-  async.waterfall([
-    function (callback) {
-      callback(null, content);
+    while (i--) {
+      from = content[i];
+      pos = pos - from.length;
+      from.copy(buffer, pos);
     }
-  ].concat(handlers), function (error, content) {
-    callback(error, filename, stat, content);
+
+    if (!called) callback(null, buffer);
   });
 }
 
-function resolveHandlers(self, ext, ignore) {
+function Buffer2stream(buffer) {
+  this.readable = true;
+  this.writable = true;
+
+  this.position = 0;
+  this.buffer = buffer;
+  this.paused = true;
+
+  this.on('error', function (error) {
+    this.writeable = false;
+
+    if (this.listeners('error').length > 1) throw error;
+  });
+
+  this.resume();
+}
+util.inherits(Buffer2stream, Stream);
+
+Buffer2stream.pause = function () {
+  this.paused = true;
+};
+
+Buffer2stream.resume = function () {
+  var self = this;
+  this.paused = false;
+
+  if (this.writable === false) return;
+
+  (function writeChunk() {
+    process.nextTick(function () {
+
+      // if write stream is paused don't do anything
+      if (self.paused || !self.writable) return;
+
+      // this won't be the last writen chunk
+      if (self.position + chunkSize < self.buffer.length) {
+        self.write(self.buffer.slice(self.position, self.position + chunkSize));
+        self.position += chunkSize;
+
+        return writeChunk();
+      }
+
+      // last chunk
+      self.end(self.buffer.slice(self.position, self.buffer.length));
+    });
+  })();
+};
+
+Buffer2stream.write = function (chunk) {
+  this.emit('data', chunk);
+  return true;
+};
+
+Buffer2stream.end = function (chunk) {
+  this.write(chunk);
+  this.destroy();
+  this.emit('end');
+};
+
+Buffer2stream.destroy = function () {
+  this.writeable = false;
+  this.position = this.buffer.length;
+  this.buffer = null;
+  this.emit('close');
+};
+
+Buffer2stream.destroySoon = function () {
+  this.destroy();
+};
+
+// make a clean read
+function compileSource(self, filename, source, cache, output) {
+
+  async.waterfall([
+
+    // open file descriptor
+    function (callback) {
+      fs.open(source, function (error, fd) {
+        callback(null, fd);
+      });
+    },
+
+    // read stat
+    function (fd, callback) {
+      fs.fstat(fd, function (error, stat) {
+        callback(null, fd, stat);
+      });
+    },
+
+    // open read stream
+    function (fd, stat, callback) {
+      var stream = fs.createReadStream(source, {
+        'fd': fd,
+        'bufferSize': chunkSize
+      });
+      callback(null, fd, stat, stream);
+    },
+
+    // parse file stream
+    function (fd, stat, stream, callback) {
+
+      // resolve the order of compliers
+      var handlers = resolveHandlers(self, path.extname(filename).slice(1));
+      var prevType = handlers[handlers.length - 1];
+      var converter = convertHandlers[prevType].stream;
+
+      async.waterfall([
+        function (callback) {
+          callback(null, stream);
+        }
+      ].concat(handlers), function (error, result) {
+        if (error) return callback(error, null);
+
+        // convert latest result to stream object
+        converter(result, function (error, stream) {
+          callback(error, fd, stat, stream);
+        });
+      });
+    }
+
+  ], function (error, fd, stat, stream) {
+    // relay any error to output stream
+    if (error) {
+      fs.close(fd, function () {
+        output.emit('error', error);
+      });
+
+      return;
+    }
+
+    // create cache file write stream
+    var write = fs.createWriteStream(cache);
+    stream.pipe(write);
+
+    // pipe stream and erros to the output stream, returned stream by .read
+    stream.pipe(output);
+    write.on('error', output.emit.bind(stream, 'error'));
+
+    // save stat when write is done
+    write.on('end', function () { updateStat(self, filename, stat); });
+
+    // remove from stat if any error exist
+    write.on('error', function () { updateStat(self, filename); });
+    stream.on('error', function () { updateStat(self, filename); });
+  });
+}
+
+function resolveHandlers(self, ext, prevType, ignore) {
+
+  // previous will by default be stream, since fs.createReadStream returns a stream
+  prevType = prevType || 'stream';
 
   // get source handlers
   var source = [];
@@ -412,13 +552,15 @@ function resolveHandlers(self, ext, ignore) {
     if (ignore && handle.type === null) return;
 
     // Apply chain subhandlers to array
-    if (handle.chain) {
-      handlers.push.apply(handlers, resolveHandlers(self, handle.chain, true));
+    if (typeof handle.method === 'string') {
+      handlers.push.apply(handlers, resolveHandlers(self, handle.method, true));
+      prevType = handlers[handlers.length - 1].output;
       return;
     }
 
     // Apply normal handlers
-    handlers.push(handle.fn);
+    handlers.push(createHandleWrap(handle.method, prevType, handle.input));
+    prevType = handle.output;
   });
 
   return handlers;
@@ -447,20 +589,6 @@ function resolveExt(self, ext, ignore) {
   }
 
   return ext;
-}
-
-// Handle file content and save it
-// callback(error, content)
-function saveCache(self, filename, stat, content, callback) {
-
-  // Update state JSON file
-  updateStat(self, filename, stat);
-
-  // write to cache
-  var filepath = path.resolve(self.options.cache, filename);
-  fs.writeFile(filepath, content, function (error) {
-    callback(error, content);
-  });
 }
 
 // Update the stat
@@ -508,3 +636,83 @@ function trimPath(filepath) {
 
   return filepath;
 }
+
+// create a stream object and emit a predefined error on next tick
+function streamError(message, properties) {
+  var stream = new Stream();
+      stream.readable = true;
+
+  var error = new Error(message);
+  extend(error, properties);
+
+  process.nextTick(function () {
+    stream.emit('error', error);
+  });
+
+  return stream;
+}
+
+// Extend origin object with add
+function extend(origin, add) {
+  // Don't do anything if add isn't an object
+  if (!add || typeof add !== 'object') return origin;
+
+  var keys = Object.keys(add);
+  var i = keys.length;
+  while (i--) {
+    origin[keys[i]] = add[keys[i]];
+  }
+  return origin;
+}
+
+// Will relay a stream
+function RelayStream() {
+  Stream.apply(this, arguments);
+  this.writable = true;
+  this.readable = true;
+
+  this.paused = false;
+
+  this.source = null;
+  this.once('pipe', function (source) {
+    this.source = source;
+
+    if (this.paused) this.pause();
+  });
+}
+util.inherits(RelayStream, Stream);
+exports.RelayStream = RelayStream;
+
+RelayStream.prototype.pause = function () {
+  if (this.source) {
+    this.paused = true;
+    return;
+  }
+
+  return this.source.pause();
+};
+
+RelayStream.prototype.resume = function () {
+  if (this.source) {
+    this.paused = false;
+    return;
+  }
+
+  return this.source.resume();
+};
+
+RelayStream.prototype.write = function (chunk) {
+  return this.source.write(chunk);
+};
+
+RelayStream.prototype.end = function (chunk) {
+  return this.source.end(chunk);
+};
+
+RelayStream.prototype.destroy = function () {
+  return this.source.destroy();
+};
+
+RelayStream.prototype.destroySoon = function () {
+  return this.source.destroySoon();
+};
