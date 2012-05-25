@@ -145,7 +145,12 @@ Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
   // grap handle function
   var method = args.pop();
   var options = args.pop();
-  var filetypes = args.pop();
+  var filetypes = args.pop() || [];
+
+  // If options is a string, both input and output will be that string
+  if (typeof options === 'string') {
+    options = { input: options, output: options };
+  }
 
   // get universial handlers and create as empty object if it don't exist
   var allHandlers = self.handlers['*'] || (self.handlers['*'] = []);
