@@ -17,7 +17,7 @@ var exists = fs.exists || path.exists;
 // platform compatibility
 var dirSplit = process.platform === 'win32' ? '\\' : '/';
 
-// chunk size
+// chunk size (64 KB)
 var chunkSize = 64 * 1024;
 
 function Leaflet(options, callback) {
@@ -241,14 +241,16 @@ Leaflet.prototype.read = function (filename, callback) {
       return callback(error, null);
     }
 
-    // source has been modified, read from source
-    var cache = self.state[filename];
-    if (stat.mtime.getTime() > cache.mtime || stat.size !== cache.size) {
-      return compileSource(self, filename, source, cache, stream);
-    }
+    process.nextTick(function () {
+      // source has been modified, read from source
+      var info = self.state[filename];
+      if (stat.mtime.getTime() > info.mtime || stat.size !== info.size) {
+        return compileSource(self, filename, source, cache, stream);
+      }
 
-    // source has not been modified, read from cache
-    fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(stream);
+      // source has not been modified, read from cache
+      fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(stream);
+    });
   });
 
   // return relay stream, content will be relayed to this shortly
