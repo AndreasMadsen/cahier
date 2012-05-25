@@ -156,7 +156,7 @@ Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
   var allHandlers = self.handlers['*'] || (self.handlers['*'] = []);
 
   // convert filetype to lowercase
-  filetypes = args.map(function (value) {
+  filetypes = filetypes.map(function (value) {
     return value.toLowerCase();
   });
 
