@@ -145,7 +145,13 @@ Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
   // grap handle function
   var method = args.pop();
   var options = args.pop();
-  var filetypes = args.pop() || [];
+  var filetypes = args.pop();
+
+  if (filetypes === undefined) {
+    filetypes = [];
+  } else if (Array.isArray(filetypes) === false) {
+    filetypes = [filetypes];
+  }
 
   // If options is a string, both input and output will be that string
   if (typeof options === 'string') {
