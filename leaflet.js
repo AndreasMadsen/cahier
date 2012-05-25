@@ -31,7 +31,7 @@ function Leaflet(options, callback) {
   // Check options
   if (options === null ||
       typeof options !== 'object' ||
-      typeof options.read !== 'string' ||
+      typeof options.source !== 'string' ||
       typeof options.cache !== 'string' ||
       typeof options.state !== 'string') {
 
@@ -56,7 +56,7 @@ function Leaflet(options, callback) {
   Object.keys(options).forEach(function (name) {
     options[name] = path.resolve(options[name]);
   });
-  var folders = [options.read, options.cache, path.dirname(options.state)];
+  var folders = [options.source, options.cache, path.dirname(options.state)];
 
   async.series([
 

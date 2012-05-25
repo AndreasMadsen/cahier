@@ -57,7 +57,7 @@ exports.modify = function (done) {
 
 // Combine all options
 exports.options = {
-  read: exports.fixture,
+  source: exports.fixture,
   cache: exports.temp,
   state: path.resolve(exports.temp, 'state.json')
 };
