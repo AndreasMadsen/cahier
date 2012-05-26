@@ -63,21 +63,31 @@ exports.options = {
   state: path.resolve(exports.temp, 'state.json')
 };
 
-exports.handleStream = function (stream) {
-  var promise = new events.EventEmitter();
+exports.handleStream = function (stream, callback) {
+  if (!callback) {
+    var promise = new events.EventEmitter();
+  }
 
-  var content = '';
-  stream.on('data', function (chunk) {
-    content += chunk.toString();
-  });
+  if (stream) {
+    var content = '';
+    stream.on('data', function (chunk) {
+      content += chunk.toString();
+    });
 
-  stream.once('end', function () {
-    promise.emit('success', content);
-  });
+    stream.once('end', function () {
+      if (callback) return callback(null, content);
 
-  stream.once('error', function (error) {
-    promise.emit('error', error);
-  });
+      promise.emit('success', content);
+    });
 
-  return promise;
+    stream.once('error', function (error) {
+      if (callback) return callback(error, null);
+
+      promise.emit('error', error);
+    });
+  }
+
+  if (!callback) {
+    return promise;
+  }
 }

@@ -30,14 +30,14 @@ vows.describe('testing leaflet watcher').addBatch({
         // setup leaflet object
         function (callback) {
           // simpel handlers, will add first and second exports properties
-          convert.handle('json', function (content, next) {
+          convert.handle('json', 'string', function (content, next) {
             var obj = JSON.parse(content);
                 obj.first = 'first';
 
             next( JSON.stringify(obj) );
           });
 
-          convert.handle('json', function (content, next) {
+          convert.handle('json', 'string', function (content, next) {
             var obj = JSON.parse(content);
                 obj.second = 'second';
 
@@ -63,7 +63,7 @@ vows.describe('testing leaflet watcher').addBatch({
     'check that the state file was created': function (error, dum) {
       assert.ifError(error);
 
-      assert.isTrue(common.existsSync(common.options.cache));
+      assert.isTrue(common.existsSync(common.options.state));
     }
   }
 
@@ -71,7 +71,7 @@ vows.describe('testing leaflet watcher').addBatch({
 
   'when reading a file for first time': {
     topic: function () {
-      convert.read('/change.json', this.callback);
+      return common.handleStream( convert.read('/change.json') );
     },
 
     'the content should be parsed by handlers': function (error, content) {
@@ -87,18 +87,26 @@ vows.describe('testing leaflet watcher').addBatch({
     'the stat file': {
       topic: function () {
         async.parallel({
-          'origin': fs.stat.bind(fs, path.resolve(common.options.read, 'change.json')),
-          'cache': fs.readFile.bind(fs, common.options.state, 'utf8')
+          'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'change.json')),
+          'cache': function (callback) {
+
+            setTimeout(function() {
+              fs.readFile(common.options.state, 'utf8', function (error, content) {
+                if (error) return callback(error, null);
+                callback(null, content === '' ? '' : JSON.parse(content));
+              });
+            }, 200);
+          }
         }, this.callback);
       },
 
       'should be updated': function (error, result) {
         assert.ifError(error);
 
-        assert.deepEqual({
+        assert.deepEqual(result.cache['change.json'], {
           mtime: result.origin.mtime.getTime(),
           size: result.origin.size
-        }, JSON.parse(result.cache)['change.json']);
+        });
       }
     },
 
@@ -123,15 +131,19 @@ vows.describe('testing leaflet watcher').addBatch({
 
   'when the source file is modified': {
     topic: function () {
+      // we will need to wait some time so fs.Stat.mtime won't be the same
+      // PS: it is an unlikly edgecase that the source will be modified twise in the same second
       async.series({
         expected: function (callback) {
           // we will need to wait some time so fs.Stat.mtime won't be the same
-          // PS: it is an unlikly edgecase that the source will be modified twise in the same second
+          // PS: it is an unlikly edgecase that the source will be modified twise in the same seco
           setTimeout(function () {
             common.modify(callback);
           }, 1200);
         },
-        content: convert.read.bind(convert, '/change.json')
+        content: function (callback) {
+          common.handleStream(convert.read('/change.json'), callback);
+        }
       }, this.callback);
     },
 
@@ -148,7 +160,7 @@ vows.describe('testing leaflet watcher').addBatch({
     'the stat file': {
       topic: function () {
         async.parallel({
-          'origin': fs.stat.bind(fs, path.resolve(common.options.read, 'change.json')),
+          'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'change.json')),
           'cache': function (callback) {
 
             // Since state.json is handled by equilibrium, there is no need for waiting for equilibrium

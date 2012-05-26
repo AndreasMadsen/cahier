@@ -251,7 +251,7 @@ Leaflet.prototype.read = function (filename, callback) {
   }
 
   // just read from cache
-  if (this.state[filename] && !this.watching) {
+  if (this.state[filename] && this.watching === false) {
     return fs.createReadStream(cache, { bufferSize: chunkSize });
   }
 
@@ -259,7 +259,7 @@ Leaflet.prototype.read = function (filename, callback) {
   var stream = new RelayStream();
 
   // just read from source
-  if (!this.watching) {
+  if (!this.state[filename] || this.watching === false) {
 
     process.nextTick(function () {
       compileSource(self, filename, source, cache, stream);
@@ -276,16 +276,14 @@ Leaflet.prototype.read = function (filename, callback) {
       return callback(error, null);
     }
 
-    process.nextTick(function () {
-      // source has been modified, read from source
-      var info = self.state[filename];
-      if (stat.mtime.getTime() > info.mtime || stat.size !== info.size) {
-        return compileSource(self, filename, source, cache, stream);
-      }
+    // source has been modified, read from source
+    var info = self.state[filename];
+    if (!info || stat.mtime.getTime() > info.mtime || stat.size !== info.size) {
+      return compileSource(self, filename, source, cache, stream);
+    }
 
-      // source has not been modified, read from cache
-      fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(stream);
-    });
+    // source has not been modified, read from cache
+    fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(stream);
   });
 
   // return relay stream, content will be relayed to this shortly
