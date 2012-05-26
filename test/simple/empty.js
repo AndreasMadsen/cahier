@@ -30,7 +30,7 @@ vows.describe('testing leaflet when reading empty file').addBatch({
         // setup leaflet object
         function (callback) {
 
-          convert.handle('json', function (content, next) {
+          convert.handle('json', 'string', function (content, next) {
             next( JSON.stringify({
               content: content
             }) );
@@ -50,7 +50,7 @@ vows.describe('testing leaflet when reading empty file').addBatch({
 
   'when requesting an empty file': {
     topic: function () {
-      convert.read('/empty.json', this.callback);
+      return common.handleStream( convert.read('/empty.json') );
     },
 
     'it should be read as any other file': function (error, content) {

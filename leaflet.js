@@ -524,7 +524,10 @@ function compileSource(self, filename, source, cache, output) {
         'fd': fd,
         'bufferSize': chunkSize
       });
+
+      // Note late node 0.6 bug: joyent/node#3328
       stream.pause();
+
       callback(null, fd, stat, stream);
     },
 
@@ -816,5 +819,3 @@ RelayStream.prototype.destroySoon = function () {
 
   this.query.push({ 'fn': this.destroySoon, 'args': arguments });
 };
-
-
