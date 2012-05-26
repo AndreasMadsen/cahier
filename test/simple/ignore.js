@@ -15,7 +15,7 @@ var vows = require('vows'),
 common.reset();
 
 function matchError(error, filename) {
-  var filepath = path.resolve(common.options.read, filename);
+  var filepath = path.resolve(common.options.source, filename);
 
   var expect = {
     message: "ENOENT, open '" + filepath + "'",
@@ -50,7 +50,7 @@ vows.describe('testing leaflet ignore').addBatch({
         // setup leaflet object
         function (callback) {
 
-          convert.handle('json', function (content, next) {
+          convert.handle('json', 'string', function (content, next) {
             var obj = JSON.parse(content);
                 obj.modified = true;
 
@@ -76,23 +76,21 @@ vows.describe('testing leaflet ignore').addBatch({
 
     'in a root directory': {
       topic: function () {
-        convert.read('/relative.json', this.callback);
+        return common.handleStream( convert.read('/relative.json') );
       },
 
       'it should not exist': function (error, content) {
         matchError(error, './relative.json');
-        assert.isNull(content);
       }
     },
 
     'in a sub directory': {
       topic: function () {
-        convert.read('/subdir/relative.json', this.callback);
+        return common.handleStream( convert.read('/subdir/relative.json') );
       },
 
       'it should not exist': function (error, content) {
         matchError(error, './subdir/relative.json');
-        assert.isNull(content);
       }
     }
   },
@@ -101,7 +99,7 @@ vows.describe('testing leaflet ignore').addBatch({
 
     'in a root directory': {
       topic: function () {
-        convert.read('/absolute.json', this.callback);
+        return common.handleStream( convert.read('/absolute.json') );
       },
 
       'it should exist': function (error, content) {
@@ -115,12 +113,11 @@ vows.describe('testing leaflet ignore').addBatch({
 
     'in a sub directory': {
       topic: function () {
-        convert.read('/subdir/absolute.json', this.callback);
+        return common.handleStream( convert.read('/subdir/absolute.json') );
       },
 
       'it should not exist': function (error, content) {
         matchError(error, './subdir/absolute.json');
-        assert.isNull(content);
       }
     }
   },
@@ -128,12 +125,11 @@ vows.describe('testing leaflet ignore').addBatch({
 
   'when requesting a missing file': {
     topic: function () {
-      convert.read('/missing.json', this.callback);
+      return common.handleStream( convert.read('/missing.json') );
     },
 
     'it should not exist': function (error, content) {
       matchError(error, './missing.json');
-      assert.isNull(content);
     }
   }
 

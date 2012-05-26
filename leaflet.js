@@ -557,11 +557,13 @@ function compileSource(self, filename, source, cache, output) {
   ], function (error, fd, stat, stream) {
     // relay any error to output stream
     if (error) {
-      fs.close(fd, function () {
-        output.emit('error', error);
-      });
+      if (fd) {
+        return fs.close(fd, function () {
+          output.emit('error', error);
+        });
+      }
 
-      return;
+      return output.emit('error', error);
     }
 
     // hack: somehow the fd is closed prematurly by createWriteStream by default
