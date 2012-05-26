@@ -153,6 +153,10 @@ Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
     filetypes = [filetypes];
   }
 
+  if (options === undefined) {
+    throw new Error('options argument was not given');
+  }
+
   // If options is a string, both input and output will be that string
   if (typeof options === 'string') {
     options = { input: options, output: options };
@@ -601,7 +605,7 @@ function compileSource(self, filename, source, cache, output) {
   });
 }
 
-function resolveHandlers(self, ext, handlers, prevType, ignore) {
+function resolveHandlers(self, ext, prevType, ignore) {
 
   // previous will by default be stream, since fs.createReadStream returns a stream
   prevType = prevType || 'stream';
@@ -640,31 +644,6 @@ function resolveHandlers(self, ext, handlers, prevType, ignore) {
     'handlers': handlers,
     'prevType': prevType
   };
-}
-
-function resolveExt(self, ext, ignore) {
-
-  // get source handlers
-  var source = [];
-  if (self.handlers[ext]) {
-    source = self.handlers[ext];
-  } else if (self.handlers['*'] && !ignore) {
-    source = self.handlers['*'];
-  }
-
-  // search all filehandlers
-  var i = source.length;
-  while(i--) {
-    // ignore univerisal handlers
-    if (ignore && source[i].type === null) continue;
-
-    // found a chain resolve that
-    if (source[i].chain) {
-      return resolveExt(self, source[i].chain, true);
-    }
-  }
-
-  return ext;
 }
 
 // Update the stat

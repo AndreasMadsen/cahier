@@ -46,26 +46,26 @@ vows.describe('testing leaflet subhandle').addBatch({
             };
           }
 
-          convert.handle('txt', handle( { type: 'txt', state: 1 } ));
-          convert.handle('txt', 'txt2');
-          convert.handle('txt', 'js');
-          convert.handle('txt', handle( { type: 'txt', state: 2 } ));
+          convert.handle('txt', 'string', handle( { type: 'txt', state: 1 } ));
+          convert.convert('txt', 'txt2');
+          convert.convert('txt', 'js');
+          convert.handle('txt', 'string', handle( { type: 'txt', state: 2 } ));
 
-          convert.handle('txt2', handle( { type: 'txt2', state: 1 } ));
-          convert.handle('txt2', 'txt3');
-          convert.handle('txt2', handle( { type: 'txt2', state: 2 } ));
+          convert.handle('txt2', 'string', handle( { type: 'txt2', state: 1 } ));
+          convert.convert('txt2', 'txt3');
+          convert.handle('txt2', 'string', handle( { type: 'txt2', state: 2 } ));
 
-          convert.handle('txt3', handle( { type: 'txt3', state: 1 } ));
-          convert.handle('txt3', handle( { type: 'txt3', state: 2 } ));
+          convert.handle('txt3', 'string', handle( { type: 'txt3', state: 1 } ));
+          convert.handle('txt3', 'string', handle( { type: 'txt3', state: 2 } ));
 
-          convert.handle('js', handle( { type: 'js', state: 1 } ));
-          convert.handle('js', 'json');
-          convert.handle('js', handle( { type: 'js', state: 2 } ));
+          convert.handle('js', 'string', handle( { type: 'js', state: 1 } ));
+          convert.convert('js', 'json');
+          convert.handle('js', 'string', handle( { type: 'js', state: 2 } ));
 
-          convert.handle('json', handle( { type: 'json', state: 1 } ));
-          convert.handle('json', handle( { type: 'json', state: 2 } ));
+          convert.handle('json', 'string', handle( { type: 'json', state: 1 } ));
+          convert.handle('json', 'string', handle( { type: 'json', state: 2 } ));
 
-          convert.handle(handle( { type: '*', state: 3 } ));
+          convert.handle('string', handle( { type: '*', state: 3 } ));
 
           callback(null);
         }
@@ -81,7 +81,7 @@ vows.describe('testing leaflet subhandle').addBatch({
 
   'when converting using subhandlers': {
     topic: function () {
-      convert.read('/subhandle.txt', this.callback);
+      return common.handleStream( convert.read('/subhandle.txt') );
     },
 
     'the result should match in proper order': function (error, content) {
@@ -108,7 +108,7 @@ vows.describe('testing leaflet subhandle').addBatch({
 
     'the renamed cache file': {
       topic: function () {
-        fs.readFile(path.resolve(common.options.cache, 'subhandle.json'), 'utf8', this.callback);
+        fs.readFile(path.resolve(common.options.cache, 'subhandle.txt'), 'utf8', this.callback);
       },
 
       'should also match': function (error, content) {
