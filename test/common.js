@@ -7,6 +7,7 @@ var path = require('path');
 var fs = require('fs');
 var async = require('async');
 var wrench = require('wrench');
+var events = require('events');
 
 // node < 0.8 compatibility
 exports.exists = fs.exists || path.exists;
@@ -61,3 +62,22 @@ exports.options = {
   cache: exports.temp,
   state: path.resolve(exports.temp, 'state.json')
 };
+
+exports.handleStream = function (stream) {
+  var promise = new events.EventEmitter();
+
+  var content = '';
+  stream.on('data', function (chunk) {
+    content += chunk.toString();
+  });
+
+  stream.once('end', function () {
+    promise.emit('success', content);
+  });
+
+  stream.once('error', function (error) {
+    promise.emit('error', error);
+  });
+
+  return promise;
+}

@@ -198,6 +198,30 @@ Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
   });
 };
 
+Leaflet.prototype.convert = function (fromFiletype, toFiletype) {
+
+  if (arguments.length !== 2) {
+    throw new Error("Both filetype arguments must be specified");
+  }
+
+  // convert filetype to lower case
+  fromFiletype = fromFiletype.toLowerCase();
+  toFiletype = toFiletype.toLowerCase();
+
+  // get universial handlers and create as empty object if it don't exist
+  var allHandlers = this.handlers['*'] || (this.handlers['*'] = []);
+
+  // will set handlers[type] to an array if it hasn't been done before.
+  // Since already added unversial handlers should be executed first
+  // we will copy the allHandlers array and use that
+  var handlers = this.handlers[fromFiletype] || (this.handlers[fromFiletype] = allHandlers.slice());
+
+  handlers.push({
+    'type': fromFiletype,
+    'chain': toFiletype
+  });
+};
+
 // Read and process file, if the file don't exist in memory, `write` directory
 // or has been reset by Leaflet.watch
 Leaflet.prototype.read = function (filename, callback) {
@@ -303,6 +327,7 @@ function createHandleWrap(compiler, inputType, outputType) {
   var convert = convertHandlers[inputType][outputType];
 
   return function (input, callback) {
+
     convert(input, function (error, input) {
       if (error) return callback(error, null);
 
@@ -311,7 +336,7 @@ function createHandleWrap(compiler, inputType, outputType) {
           return callback(result, null);
         }
 
-        callback(null, input);
+        callback(null, result);
       });
     });
   };
@@ -366,7 +391,7 @@ var convertHandlers = {
 function stream2buffer(input, callback) {
   var size = 0;
   var content = [];
-  var called = true;
+  var called = false;
 
   input.on('data', function (chunk) {
     if (typeof chunk === 'string') {
@@ -378,10 +403,12 @@ function stream2buffer(input, callback) {
   });
 
   input.on('error', function (error) {
-    if (!called) callback(error, null);
+    if (called) return;
+    called = true;
+    callback(error, null);
   });
 
-  input.on('end', function () {
+  input.once('end', function () {
     var buffer = new Buffer(size);
     var i = content.length;
     var pos = size;
@@ -393,8 +420,12 @@ function stream2buffer(input, callback) {
       from.copy(buffer, pos);
     }
 
-    if (!called) callback(null, buffer);
+    if (called) return;
+    called = true;
+    callback(null, buffer);
   });
+
+  input.resume();
 }
 
 function Buffer2stream(buffer) {
@@ -410,19 +441,16 @@ function Buffer2stream(buffer) {
 
     if (this.listeners('error').length > 1) throw error;
   });
-
-  this.resume();
 }
 util.inherits(Buffer2stream, Stream);
 
-Buffer2stream.pause = function () {
+Buffer2stream.prototype.pause = function () {
   this.paused = true;
 };
 
-Buffer2stream.resume = function () {
+Buffer2stream.prototype.resume = function () {
   var self = this;
   this.paused = false;
-
   if (this.writable === false) return;
 
   (function writeChunk() {
@@ -445,25 +473,27 @@ Buffer2stream.resume = function () {
   })();
 };
 
-Buffer2stream.write = function (chunk) {
+Buffer2stream.prototype.write = function (chunk) {
   this.emit('data', chunk);
-  return true;
+  return this.writable;
 };
 
-Buffer2stream.end = function (chunk) {
-  this.write(chunk);
+Buffer2stream.prototype.end = function (chunk) {
+  if (chunk && this.writable) this.write(chunk);
   this.destroy();
   this.emit('end');
 };
 
-Buffer2stream.destroy = function () {
+Buffer2stream.prototype.destroy = function () {
+  if (this.buffer === null) return;
+
   this.writeable = false;
   this.position = this.buffer.length;
   this.buffer = null;
   this.emit('close');
 };
 
-Buffer2stream.destroySoon = function () {
+Buffer2stream.prototype.destroySoon = function () {
   this.destroy();
 };
 
@@ -474,15 +504,15 @@ function compileSource(self, filename, source, cache, output) {
 
     // open file descriptor
     function (callback) {
-      fs.open(source, function (error, fd) {
-        callback(null, fd);
+      fs.open(source, 'r', function (error, fd) {
+        callback(error, fd);
       });
     },
 
     // read stat
     function (fd, callback) {
       fs.fstat(fd, function (error, stat) {
-        callback(null, fd, stat);
+        callback(error, fd, stat);
       });
     },
 
@@ -492,6 +522,7 @@ function compileSource(self, filename, source, cache, output) {
         'fd': fd,
         'bufferSize': chunkSize
       });
+      stream.pause();
       callback(null, fd, stat, stream);
     },
 
@@ -499,8 +530,9 @@ function compileSource(self, filename, source, cache, output) {
     function (fd, stat, stream, callback) {
 
       // resolve the order of compliers
-      var handlers = resolveHandlers(self, path.extname(filename).slice(1));
-      var prevType = handlers[handlers.length - 1];
+      var result = resolveHandlers(self, path.extname(filename).slice(1));
+      var handlers = result.handlers;
+      var prevType = result.prevType;
       var converter = convertHandlers[prevType].stream;
 
       async.waterfall([
@@ -527,24 +559,44 @@ function compileSource(self, filename, source, cache, output) {
       return;
     }
 
-    // create cache file write stream
-    var write = fs.createWriteStream(cache);
-    stream.pipe(write);
+    // hack: somehow the fd is closed prematurly by createWriteStream by default
+    // that is why we takes total control
+    fs.open(cache, 'w', function (error, fd) {
+      if (error) return output.emit('error', error);
 
-    // pipe stream and erros to the output stream, returned stream by .read
-    stream.pipe(output);
-    write.on('error', output.emit.bind(stream, 'error'));
+      // create cache file write stream
+      var write = fs.createWriteStream(cache, { 'fd': fd });
+      stream.pipe(write, { end: true });
 
-    // save stat when write is done
-    write.on('end', function () { updateStat(self, filename, stat); });
+      // also pipe errors from write to output so the users will get the all
+      write.on('error', output.emit.bind(stream, 'error'));
 
-    // remove from stat if any error exist
-    write.on('error', function () { updateStat(self, filename); });
-    stream.on('error', function () { updateStat(self, filename); });
+      // once write is done we can simply close the fd
+      write.on('close', function () {
+        fs.close(fd);
+      });
+
+      // pipe stream to output stream
+      // note since a stream:close emit will by default result in a output.destroy() execute
+      // and we on the same time want users to be able to destroy a stream by output.destroy()
+      // we wont automaticly pipe stream:close, but ignore it in stream.pipe and manually relay
+      // the close and end event
+      stream.pipe(output, { end: false });
+      stream.once('end', output.emit.bind(output, 'end'));
+      stream.once('close', output.emit.bind(output, 'close'));
+
+      // handle stat update
+      write.once('end', function () { updateStat(self, filename, stat); });
+      write.once('error', function () { updateStat(self, filename); });
+      stream.once('error', function () { updateStat(self, filename); });
+
+      // begin buffer stream
+      stream.resume();
+    });
   });
 }
 
-function resolveHandlers(self, ext, prevType, ignore) {
+function resolveHandlers(self, ext, handlers, prevType, ignore) {
 
   // previous will by default be stream, since fs.createReadStream returns a stream
   prevType = prevType || 'stream';
@@ -564,10 +616,12 @@ function resolveHandlers(self, ext, prevType, ignore) {
     // ignore univerisal handlers
     if (ignore && handle.type === null) return;
 
+
     // Apply chain subhandlers to array
-    if (typeof handle.method === 'string') {
-      handlers.push.apply(handlers, resolveHandlers(self, handle.method, true));
-      prevType = handlers[handlers.length - 1].output;
+    if (handle.chain) {
+      var result = resolveHandlers(self, handle.chain, prevType, true);
+      handlers.push.apply(handlers, result.handlers);
+      prevType = result.prevType;
       return;
     }
 
@@ -576,7 +630,11 @@ function resolveHandlers(self, ext, prevType, ignore) {
     prevType = handle.output;
   });
 
-  return handlers;
+  // a little confusing, but seams to be the shortest way
+  return {
+    'handlers': handlers,
+    'prevType': prevType
+  };
 }
 
 function resolveExt(self, ext, ignore) {
@@ -678,54 +736,83 @@ function extend(origin, add) {
   return origin;
 }
 
+// quick argument converter
+function toArray(input) {
+  var output = [];
+  for (var i = 0, l = input.length; i < l; i++) {
+    output.push(input[i]);
+  }
+  return output;
+}
+
 // Will relay a stream
 function RelayStream() {
   Stream.apply(this, arguments);
-  this.writable = true;
   this.readable = true;
+  this.writable = true;
 
-  this.paused = false;
+  this.query = [];
 
   this.source = null;
   this.once('pipe', function (source) {
     this.source = source;
 
-    if (this.paused) this.pause();
+    var method;
+    while (method = this.query.shift()) {
+      method.fn.apply(this, method.args);
+    }
   });
 }
 util.inherits(RelayStream, Stream);
 exports.RelayStream = RelayStream;
 
 RelayStream.prototype.pause = function () {
-  if (this.source) {
-    this.paused = true;
-    return;
-  }
+  if (this.source) return this.source.pause.apply(this.source, arguments);
 
-  return this.source.pause();
+  this.query.push({ 'fn': this.pause, 'args': arguments });
 };
 
 RelayStream.prototype.resume = function () {
+  if (this.source) return this.source.resume.apply(this.source, arguments);
+
+  this.query.push({ 'fn': this.resume, 'args': arguments });
+};
+
+RelayStream.prototype.write = function () {
+  var args = toArray(arguments);
+
   if (this.source) {
-    this.paused = false;
-    return;
+    return this.emit.apply(this, ['data'].concat(args));
   }
 
-  return this.source.resume();
+  this.query.push({ 'fn': this.write, 'args': ['data'].concat(args) });
 };
 
-RelayStream.prototype.write = function (chunk) {
-  return this.source.write(chunk);
-};
+RelayStream.prototype.end = function () {
+  var args = toArray(arguments);
 
-RelayStream.prototype.end = function (chunk) {
-  return this.source.end(chunk);
+  // if chunks are given
+  if (args.length > 0) {
+    this.write.apply(this, args);
+  }
+
+  if (this.source) {
+    return this.emit('end');
+  }
+
+  this.query.push({ 'fn': this.end, 'args': ['end']});
 };
 
 RelayStream.prototype.destroy = function () {
-  return this.source.destroy();
+  if (this.source) return this.source.destroy.apply(this.source, arguments);
+
+  this.query.push({ 'fn': this.destroy, 'args': arguments });
 };
 
 RelayStream.prototype.destroySoon = function () {
-  return this.source.destroySoon();
+  if (this.source) return this.source.destroySoon.apply(this.source, arguments);
+
+  this.query.push({ 'fn': this.destroySoon, 'args': arguments });
 };
+
+

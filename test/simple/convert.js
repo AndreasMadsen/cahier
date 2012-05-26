@@ -44,7 +44,7 @@ vows.describe('testing leaflet converter').addBatch({
             next( JSON.stringify(obj) );
           });
 
-          convert.handle('js', 'json');
+          convert.convert('js', 'json');
 
           callback(null);
         }
@@ -64,11 +64,11 @@ vows.describe('testing leaflet converter').addBatch({
     }
   }
 
-})/*.addBatch({
+}).addBatch({
 
   'when reading a file for first time': {
     topic: function () {
-      convert.read('/static.json', this.callback);
+      return common.handleStream( convert.read('/static.json') );
     },
 
     'the content should be parsed by handlers': function (error, content) {
@@ -116,7 +116,7 @@ vows.describe('testing leaflet converter').addBatch({
     }
   }
 
-}).addBatch({
+})/*.addBatch({
 
   'when reading a file second time': {
     topic: function () {
