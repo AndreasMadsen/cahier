@@ -430,14 +430,15 @@ function stream2buffer(input, callback) {
 
 function Buffer2stream(buffer) {
   this.readable = true;
-  this.writable = true;
+  this.writable = false;
 
+  this.stop = false;
   this.position = 0;
   this.buffer = buffer;
   this.paused = true;
 
   this.on('error', function (error) {
-    this.writeable = false;
+    this.stop = true;
 
     if (this.listeners('error').length > 1) throw error;
   });
@@ -451,13 +452,13 @@ Buffer2stream.prototype.pause = function () {
 Buffer2stream.prototype.resume = function () {
   var self = this;
   this.paused = false;
-  if (this.writable === false) return;
+  if (this.stop === true) return;
 
   (function writeChunk() {
     process.nextTick(function () {
 
       // if write stream is paused don't do anything
-      if (self.paused || !self.writable) return;
+      if (self.paused || self.stop) return;
 
       // this won't be the last writen chunk
       if (self.position + chunkSize < self.buffer.length) {
@@ -475,19 +476,20 @@ Buffer2stream.prototype.resume = function () {
 
 Buffer2stream.prototype.write = function (chunk) {
   this.emit('data', chunk);
-  return this.writable;
+  return !this.stop;
 };
 
 Buffer2stream.prototype.end = function (chunk) {
-  if (chunk && this.writable) this.write(chunk);
-  this.destroy();
+  if (chunk && !this.stop) this.write(chunk);
+  this.stop = true;
   this.emit('end');
+  this.destroy();
 };
 
 Buffer2stream.prototype.destroy = function () {
   if (this.buffer === null) return;
 
-  this.writeable = false;
+  this.stop = true;
   this.position = this.buffer.length;
   this.buffer = null;
   this.emit('close');
@@ -566,13 +568,13 @@ function compileSource(self, filename, source, cache, output) {
 
       // create cache file write stream
       var write = fs.createWriteStream(cache, { 'fd': fd });
-      stream.pipe(write, { end: true });
+      stream.pipe(write);
 
       // also pipe errors from write to output so the users will get the all
       write.on('error', output.emit.bind(stream, 'error'));
 
       // once write is done we can simply close the fd
-      write.on('close', function () {
+      write.once('close', function () {
         fs.close(fd);
       });
 
@@ -586,7 +588,7 @@ function compileSource(self, filename, source, cache, output) {
       stream.once('close', output.emit.bind(output, 'close'));
 
       // handle stat update
-      write.once('end', function () { updateStat(self, filename, stat); });
+      write.once('close', function () { updateStat(self, filename, stat); });
       write.once('error', function () { updateStat(self, filename); });
       stream.once('error', function () { updateStat(self, filename); });
 
