@@ -84,10 +84,14 @@ vows.describe('testing leaflet converter').addBatch({
 
     'the stat file': {
       topic: function () {
-        async.parallel({
-          'origin': fs.stat.bind(fs, path.resolve(common.options.read, 'static.json')),
-          'cache': fs.readFile.bind(fs, common.options.state, 'utf8')
-        }, this.callback);
+        var self = this;
+
+        setTimeout(function () {
+          async.parallel({
+            'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'static.json')),
+            'cache': fs.readFile.bind(fs, common.options.state, 'utf8')
+          }, self.callback);
+        }, 200);
       },
 
       'should be updated': function (error, result) {
@@ -116,43 +120,45 @@ vows.describe('testing leaflet converter').addBatch({
     }
   }
 
-})/*.addBatch({
+}).addBatch({
 
   'when reading a file second time': {
     topic: function () {
-      async.waterfall([
+      var self = this;
 
-        // read cache file
-        fs.readFile.bind(fs, path.resolve(common.options.cache, 'static.json'), 'utf8'),
+      // read cache file
+      fs.readFile(path.resolve(common.options.cache, 'static.json'), 'utf8', function (error, content) {
+        if (error) self.callback(error, null);
 
-        // manipulate
-        function (content, callback) {
-          var obj = JSON.parse(content);
-              obj.manipulated = true;
+        var obj = JSON.parse(content);
+            obj.manipulated = true;
 
-          callback(null, JSON.stringify(obj));
-        },
+        content = JSON.stringify(obj);
 
         // overwrite cache file
-        fs.writeFile.bind(fs, path.resolve(common.options.cache, 'static.json')),
-
-        // get file using leaflet
-        convert.read.bind(convert, '/static.json')
-
-      ], this.callback);
+        fs.writeFile(path.resolve(common.options.cache, 'static.json'), content, function (error) {
+          self.callback(error, content);
+        });
+      });
     },
 
-    'the content should be read from cache directory': function (error, content) {
-      assert.ifError(error);
+    'the content': {
+      topic: function () {
+        return common.handleStream( convert.read('/static.json') );
+      },
 
-      assert.deepEqual(JSON.parse(content), {
-        zero: 'zero',
-        position: 'root',
-        first: 'first',
-        second: 'second',
-        manipulated: true
-      });
+      'shoud be read from cache directory': function (error, content) {
+        assert.ifError(error);
+
+        assert.deepEqual(JSON.parse(content), {
+          zero: 'zero',
+          position: 'root',
+          first: 'first',
+          second: 'second',
+          manipulated: true
+        });
+      }
     }
   }
 
-})*/.exportTo(module);
+}).exportTo(module);
