@@ -568,39 +568,45 @@ function compileSource(self, filename, source, cache, output) {
       return output.emit('error', error);
     }
 
-    // hack: somehow the fd is closed prematurly by createWriteStream by default
-    // that is why we takes total control
-    fs.open(cache, 'w', function (error, fd) {
+    // create cache subdirectory
+    createDirectory(path.dirname(cache), function (error) {
       if (error) return output.emit('error', error);
 
-      // create cache file write stream
-      var write = fs.createWriteStream(cache, { 'fd': fd });
-      stream.pipe(write);
+      // hack: somehow the fd is closed prematurly by createWriteStream by default
+      // that is why we takes total control
+      fs.open(cache, 'w', function (error, fd) {
+        if (error) return output.emit('error', error);
 
-      // also pipe errors from write to output so the users will get the all
-      write.on('error', output.emit.bind(stream, 'error'));
+        // create cache file write stream
+        var write = fs.createWriteStream(cache, { 'fd': fd });
+        stream.pipe(write);
 
-      // once write is done we can simply close the fd
-      write.once('close', function () {
-        fs.close(fd);
+        // also pipe errors from write to output so the users will get the all
+        write.on('error', output.emit.bind(stream, 'error'));
+
+        // once write is done we can simply close the fd
+        write.once('close', function () {
+          fs.close(fd);
+        });
+
+        // pipe stream to output stream
+        // note since a stream:close emit will by default result in a output.destroy() execute
+        // and we on the same time want users to be able to destroy a stream by output.destroy()
+        // we wont automaticly pipe stream:close, but ignore it in stream.pipe and manually relay
+        // the close and end event
+        stream.pipe(output, { end: false });
+        stream.once('end', output.emit.bind(output, 'end'));
+        stream.once('close', output.emit.bind(output, 'close'));
+
+        // handle stat update
+        write.once('close', function () { updateStat(self, filename, stat); });
+        write.once('error', function () { updateStat(self, filename); });
+        stream.once('error', function () { updateStat(self, filename); });
+
+        // begin buffer stream
+        stream.resume();
       });
 
-      // pipe stream to output stream
-      // note since a stream:close emit will by default result in a output.destroy() execute
-      // and we on the same time want users to be able to destroy a stream by output.destroy()
-      // we wont automaticly pipe stream:close, but ignore it in stream.pipe and manually relay
-      // the close and end event
-      stream.pipe(output, { end: false });
-      stream.once('end', output.emit.bind(output, 'end'));
-      stream.once('close', output.emit.bind(output, 'close'));
-
-      // handle stat update
-      write.once('close', function () { updateStat(self, filename, stat); });
-      write.once('error', function () { updateStat(self, filename); });
-      stream.once('error', function () { updateStat(self, filename); });
-
-      // begin buffer stream
-      stream.resume();
     });
   });
 }
