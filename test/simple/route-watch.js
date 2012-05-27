@@ -49,7 +49,8 @@ vows.describe('testing leaflet watcher').addBatch({
 
         // start wacher
         function (callback) {
-          convert.watch(callback);
+          convert.watch();
+          callback();
         }
       ], this.callback);
     },

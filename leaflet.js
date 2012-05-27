@@ -309,20 +309,19 @@ Leaflet.prototype.ignore = function (filename) {
 // Find all files in `read` and process them all
 Leaflet.prototype.compile = function (callback) {
   if (this.ready === false) {
-    return callback(new Error('leaflet object is not ready'));
+    throw new Error('leaflet object is not ready');
   }
 
   callback();
 };
 
 // Watch `read` directory for changes and update files once they are requested
-Leaflet.prototype.watch = function (callback) {
+Leaflet.prototype.watch = function () {
   if (this.ready === false) {
-    return callback(new Error('leaflet object is not ready'));
+    throw new Error('leaflet object is not ready');
   }
 
   this.watching = true;
-  return callback();
 };
 
 function createHandleWrap(compiler, inputType, outputType) {
