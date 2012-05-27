@@ -261,7 +261,7 @@ Leaflet.prototype.read = function (filename, callback) {
   }
 
   // create a relay stream since async handling will be needed
-  var stream = flower.relayStream();
+  var stream = flower.relayReadStream();
 
   // just read from source
   if (!this.state[filename] || this.watching === false) {
