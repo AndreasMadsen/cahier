@@ -10,6 +10,7 @@ var async = require('async');
 var mkdirp = require('mkdirp');
 var equilibrium = require('equilibrium');
 var Stream = require('stream');
+var flower = require('flower');
 
 // node < 0.8 compatibility
 var exists = fs.exists || path.exists;
@@ -260,7 +261,7 @@ Leaflet.prototype.read = function (filename, callback) {
   }
 
   // create a relay stream since async handling will be needed
-  var stream = new RelayStream();
+  var stream = flower.relayStream();
 
   // just read from source
   if (!this.state[filename] || this.watching === false) {
@@ -354,7 +355,10 @@ var convertHandlers = {
     },
 
     'stream': function (input, callback) {
-      callback(null, new Buffer2stream(input));
+      var stream = flower.buffer2stream(input, { 'chunkSize': chunkSize });
+      stream.pause();
+
+      callback(null, stream);
     }
   },
 
@@ -368,17 +372,20 @@ var convertHandlers = {
     },
 
     'stream': function (input, callback) {
-      callback(null, new Buffer2stream(input));
+      var stream = flower.buffer2stream(input, { 'chunkSize': chunkSize });
+      stream.pause();
+
+      callback(null, stream);
     }
   },
 
   'stream': {
     'buffer': function (input, callback) {
-      stream2buffer(input, callback);
+      flower.stream2buffer(input, callback);
     },
 
     'string': function (input, callback) {
-      stream2buffer(input, function (error, input) {
+      flower.stream2buffer(input, function (error, input) {
         callback(error, input && input.toString());
       });
     },
@@ -387,117 +394,6 @@ var convertHandlers = {
       callback(null, input);
     }
   }
-};
-
-function stream2buffer(input, callback) {
-  var size = 0;
-  var content = [];
-  var called = false;
-
-  input.on('data', function (chunk) {
-    if (typeof chunk === 'string') {
-      chunk = Buffer.isBuffer(chunk);
-    }
-
-    size += chunk.length;
-    content.push(chunk);
-  });
-
-  input.on('error', function (error) {
-    if (called) return;
-    called = true;
-    callback(error, null);
-  });
-
-  input.once('end', function () {
-    var buffer = new Buffer(size);
-    var i = content.length;
-    var pos = size;
-    var from;
-
-    while (i--) {
-      from = content[i];
-      pos = pos - from.length;
-      from.copy(buffer, pos);
-    }
-
-    if (called) return;
-    called = true;
-    callback(null, buffer);
-  });
-
-  input.resume();
-}
-
-function Buffer2stream(buffer) {
-  this.readable = true;
-  this.writable = false;
-
-  this.stop = false;
-  this.position = 0;
-  this.buffer = buffer;
-  this.paused = true;
-
-  this.on('error', function (error) {
-    this.stop = true;
-
-    if (this.listeners('error').length > 1) throw error;
-  });
-}
-util.inherits(Buffer2stream, Stream);
-
-Buffer2stream.prototype.pause = function () {
-  this.paused = true;
-};
-
-Buffer2stream.prototype.resume = function () {
-  var self = this;
-  this.paused = false;
-  if (this.stop === true) return;
-
-  (function writeChunk() {
-    process.nextTick(function () {
-
-      // if write stream is paused don't do anything
-      if (self.paused || self.stop) return;
-
-      // this won't be the last writen chunk
-      if (self.position + chunkSize < self.buffer.length) {
-        self.write(self.buffer.slice(self.position, self.position + chunkSize));
-        self.position += chunkSize;
-
-        return writeChunk();
-      }
-
-      // last chunk
-      self.end(self.buffer.slice(self.position, self.buffer.length));
-    });
-  })();
-};
-
-Buffer2stream.prototype.write = function (chunk) {
-  this.emit('data', chunk);
-  return !this.stop;
-};
-
-Buffer2stream.prototype.end = function (chunk) {
-  if (chunk && !this.stop) this.write(chunk);
-  this.stop = true;
-  this.emit('end');
-  this.destroy();
-};
-
-Buffer2stream.prototype.destroy = function () {
-  if (this.buffer === null) return;
-
-  this.stop = true;
-  this.position = this.buffer.length;
-  this.buffer = null;
-  this.emit('close');
-};
-
-Buffer2stream.prototype.destroySoon = function () {
-  this.destroy();
 };
 
 // make a clean read
@@ -593,14 +489,11 @@ function compileSource(self, filename, source, cache, output) {
         // and we on the same time want users to be able to destroy a stream by output.destroy()
         // we wont automaticly pipe stream:close, but ignore it in stream.pipe and manually relay
         // the close and end event
-        stream.pipe(output, { end: false });
-        stream.once('end', output.emit.bind(output, 'end'));
-        stream.once('close', output.emit.bind(output, 'close'));
+        stream.pipe(output);
 
         // handle stat update
         write.once('close', function () { updateStat(self, filename, stat); });
         write.once('error', function () { updateStat(self, filename); });
-        stream.once('error', function () { updateStat(self, filename); });
 
         // begin buffer stream
         stream.resume();
@@ -733,73 +626,3 @@ function toArray(input) {
   }
   return output;
 }
-
-// Will relay a stream
-function RelayStream() {
-  Stream.apply(this, arguments);
-  this.readable = true;
-  this.writable = true;
-
-  this.query = [];
-
-  this.source = null;
-  this.once('pipe', function (source) {
-    this.source = source;
-
-    var method;
-    while (method = this.query.shift()) {
-      method.fn.apply(this, method.args);
-    }
-  });
-}
-util.inherits(RelayStream, Stream);
-exports.RelayStream = RelayStream;
-
-RelayStream.prototype.pause = function () {
-  if (this.source) return this.source.pause.apply(this.source, arguments);
-
-  this.query.push({ 'fn': this.pause, 'args': arguments });
-};
-
-RelayStream.prototype.resume = function () {
-  if (this.source) return this.source.resume.apply(this.source, arguments);
-
-  this.query.push({ 'fn': this.resume, 'args': arguments });
-};
-
-RelayStream.prototype.write = function () {
-  var args = toArray(arguments);
-
-  if (this.source) {
-    return this.emit.apply(this, ['data'].concat(args));
-  }
-
-  this.query.push({ 'fn': this.write, 'args': ['data'].concat(args) });
-};
-
-RelayStream.prototype.end = function () {
-  var args = toArray(arguments);
-
-  // if chunks are given
-  if (args.length > 0) {
-    this.write.apply(this, args);
-  }
-
-  if (this.source) {
-    return this.emit('end');
-  }
-
-  this.query.push({ 'fn': this.end, 'args': ['end']});
-};
-
-RelayStream.prototype.destroy = function () {
-  if (this.source) return this.source.destroy.apply(this.source, arguments);
-
-  this.query.push({ 'fn': this.destroy, 'args': arguments });
-};
-
-RelayStream.prototype.destroySoon = function () {
-  if (this.source) return this.source.destroySoon.apply(this.source, arguments);
-
-  this.query.push({ 'fn': this.destroySoon, 'args': arguments });
-};
