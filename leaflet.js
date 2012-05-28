@@ -107,7 +107,7 @@ function Leaflet(options, callback) {
 
       self.statStream.open();
     }
-  ], callback);
+  ], callback.bind(this));
 }
 module.exports = function (options, callback) {
   return new Leaflet(options, callback);
@@ -313,7 +313,41 @@ Leaflet.prototype.compile = function (callback) {
     throw new Error('leaflet object is not ready');
   }
 
-  callback();
+  var self = this;
+
+  // remove all files from the cache directory
+  directorySearch({
+    directory: this.options.cache,
+
+    found: function (filepath, done) {
+      fs.unlink(filepath, done);
+    },
+
+    done: compile
+  });
+
+  // compile the source directory
+  function compile(error) {
+    if (error) return callback(error);
+
+    directorySearch({
+      directory: self.options.source,
+
+      found: function (source, done) {
+        var filename = source.substr(self.options.source.length + 1, source.length);
+        var cache = path.resolve(self.options.cache, filename);
+
+        if (self.ignorefiles.filepath.indexOf( filename ) !== -1 ||
+            self.ignorefiles.filename.indexOf( path.basename(filename) ) !== -1) {
+          return done();
+        }
+
+        compileSource(self, filename, source, cache, streamCallback(done));
+      },
+
+      done: callback
+    });
+  }
 };
 
 // Watch `read` directory for changes and update files once they are requested
@@ -467,38 +501,22 @@ function compileSource(self, filename, source, cache, output) {
     createDirectory(path.dirname(cache), function (error) {
       if (error) return output.emit('error', error);
 
-      // hack: somehow the fd is closed prematurly by createWriteStream by default
-      // that is why we takes total control
-      fs.open(cache, 'w', function (error, fd) {
-        if (error) return output.emit('error', error);
+      // create cache file write stream
+      var write = fs.createWriteStream(cache);
 
-        // create cache file write stream
-        var write = fs.createWriteStream(cache, { 'fd': fd });
-        stream.pipe(write);
+      // pipe compiled source to cache file and output stream
+      stream.pipe(write);
+      stream.pipe(output);
 
-        // also pipe errors from write to output so the users will get the all
-        write.on('error', output.emit.bind(stream, 'error'));
+      // also pipe errors from write to output so the users will get the all
+      write.on('error', output.emit.bind(output, 'error'));
 
-        // once write is done we can simply close the fd
-        write.once('close', function () {
-          fs.close(fd);
-        });
+      // handle stat update
+      write.once('close', function () { updateStat(self, filename, stat); });
+      write.once('error', function () { updateStat(self, filename); });
 
-        // pipe stream to output stream
-        // note since a stream:close emit will by default result in a output.destroy() execute
-        // and we on the same time want users to be able to destroy a stream by output.destroy()
-        // we wont automaticly pipe stream:close, but ignore it in stream.pipe and manually relay
-        // the close and end event
-        stream.pipe(output);
-
-        // handle stat update
-        write.once('close', function () { updateStat(self, filename, stat); });
-        write.once('error', function () { updateStat(self, filename); });
-
-        // begin buffer stream
-        stream.resume();
-      });
-
+      // begin compiled source stream
+      stream.resume();
     });
   });
 }
@@ -542,6 +560,67 @@ function resolveHandlers(self, ext, prevType, ignore) {
     'handlers': handlers,
     'prevType': prevType
   };
+}
+
+function directorySearch(settings, query) {
+  var directory = settings.directory,
+      found = settings.found;
+
+  // All founed files and directories will be added to this query, until they are resolved
+  if (query === undefined) {
+    settings = extend({}, settings);
+    settings.called = false;
+
+    var done = settings.done;
+    settings.done = function (error) {
+      if (settings.called) return;
+      settings.called = true;
+
+      done(error);
+    };
+
+    query = [directory];
+  }
+
+  // read directory content
+  fs.readdir(directory, function (error, result) {
+    if (error) return settings.done(error);
+
+    // resolve all directory files and folders
+    result = result.map(function (value) {
+      return path.resolve(directory, value);
+    });
+
+    // Add result to query
+    query.push.apply(query, result);
+
+    // execute done if query is empty
+    query.splice(query.indexOf(directory), 1);
+    if (query.length === 0) return settings.done(null);
+
+    // resolve all content
+    result.forEach(function (pathname) {
+      fs.stat(pathname, function (error, stat) {
+        if (error) return settings.done(error);
+
+        // pass directory and all its content
+        if (stat.isDirectory()) {
+          return directorySearch(extend(settings, { 'directory': pathname }), query);
+        }
+
+        // execute found method
+        found(pathname, function (error) {
+          if (error) return settings.done(error);
+
+          // remove pathname from query list
+          query.splice(query.indexOf(pathname), 1);
+
+          // execute done if query is empty
+          if (query.length === 0) settings.done(null);
+        });
+      });
+    });
+  });
 }
 
 // Update the stat
@@ -603,6 +682,29 @@ function streamError(message, properties) {
   });
 
   return stream;
+}
+
+// will return a simple stream and execute callback once stream is destroyed
+function streamCallback(callback) {
+  var output = new Stream();
+
+  // ignore .destroy and .end relay
+  output._isStdio = true;
+  output.write = function () {};
+  output.on('pipe', function (source) {
+    source.once('end', output.emit.bind(output, 'end'));
+    source.once('error', output.emit.bind(output, 'error'));
+  });
+
+  output.once('end', function () {
+    callback(null);
+  });
+
+  output.once('error', function (error) {
+    callback(error);
+  });
+
+  return output;
 }
 
 // Extend origin object with add
