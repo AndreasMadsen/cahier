@@ -83,22 +83,33 @@ vows.describe('testing leaflet converter').addBatch({
     },
 
     'the stat file': {
-      topic: function () {
+      topic: function (content, stream) {
         var self = this;
 
         setTimeout(function () {
           async.parallel({
             'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'static.json')),
-            'cache': fs.readFile.bind(fs, common.options.state, 'utf8')
+            'cache': fs.readFile.bind(fs, common.options.state, 'utf8'),
+            'stream': function (callback) {
+              callback(null, stream.file);
+            }
           }, self.callback);
         }, 200);
       },
 
       'should be updated': function (error, result) {
-        assert.deepEqual({
+
+        var statFile = JSON.parse(result.cache)['static.json'];
+
+        assert.deepEqual(statFile, {
           mtime: result.origin.mtime.getTime(),
           size: result.origin.size
-        }, JSON.parse(result.cache)['static.json']);
+        });
+
+        assert.deepEqual(statFile, {
+          mtime: result.stream.mtime.getTime(),
+          size: result.stream.size
+        });
       }
     },
 

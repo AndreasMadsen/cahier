@@ -230,7 +230,8 @@ Leaflet.prototype.convert = function (fromFiletype, toFiletype) {
 // Read and process file, if the file don't exist in memory, `write` directory
 // or has been reset by Leaflet.watch
 Leaflet.prototype.read = function (filename, callback) {
-  var self = this;
+  var self = this,
+      stream;
 
   if (this.ready === false) {
     return callback(new Error('leaflet object is not ready'));
@@ -257,11 +258,20 @@ Leaflet.prototype.read = function (filename, callback) {
 
   // just read from cache
   if (this.state[filename] && this.watching === false) {
-    return fs.createReadStream(cache, { bufferSize: chunkSize });
+    stream = fs.createReadStream(cache, { bufferSize: chunkSize });
+    stream.pause();
+
+    stream.file = { mtime: new Date(this.state[filename].mtime), size: this.state[filename].size };
+    process.nextTick(function () {
+      stream.emit('ready', stream.file);
+    });
+
+    return stream;
   }
 
   // create a relay stream since async handling will be needed
-  var stream = flower.relayReadStream();
+  stream = flower.relayReadStream();
+  stream.pause();
 
   // just read from source
   if (!this.state[filename] || this.watching === false) {
@@ -289,6 +299,9 @@ Leaflet.prototype.read = function (filename, callback) {
 
     // source has not been modified, read from cache
     fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(stream);
+
+    stream.file = { mtime: new Date(this.state[filename].mtime), size: this.state[filename].size };
+    stream.emit('ready', stream.file);
   });
 
   // return relay stream, content will be relayed to this shortly
@@ -497,6 +510,10 @@ function compileSource(self, filename, source, cache, output) {
       return output.emit('error', error);
     }
 
+    // set mtime and emit ready
+    output.file = { mtime: stat.mtime, size: stat.size };
+    output.emit('ready', stream.file);
+
     // create cache subdirectory
     createDirectory(path.dirname(cache), function (error) {
       if (error) return output.emit('error', error);
@@ -514,9 +531,6 @@ function compileSource(self, filename, source, cache, output) {
       // handle stat update
       write.once('close', function () { updateStat(self, filename, stat); });
       write.once('error', function () { updateStat(self, filename); });
-
-      // begin compiled source stream
-      stream.resume();
     });
   });
 }
@@ -691,9 +705,11 @@ function streamCallback(callback) {
   // ignore .destroy and .end relay
   output._isStdio = true;
   output.write = function () {};
+
   output.on('pipe', function (source) {
     source.once('end', output.emit.bind(output, 'end'));
     source.once('error', output.emit.bind(output, 'error'));
+    source.resume();
   });
 
   output.once('end', function () {

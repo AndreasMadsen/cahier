@@ -75,15 +75,19 @@ exports.handleStream = function (stream, callback) {
     });
 
     stream.once('end', function () {
-      if (callback) return callback(null, content);
+      if (callback) return callback(null, content, stream);
 
-      promise.emit('success', content);
+      promise.emit('success', content, stream);
     });
 
     stream.once('error', function (error) {
       if (callback) return callback(error, null);
 
       promise.emit('error', error);
+    });
+
+    stream.once('ready', function () {
+      stream.resume();
     });
   }
 

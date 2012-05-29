@@ -85,27 +85,21 @@ vows.describe('testing leaflet watcher').addBatch({
       });
     },
 
-    'the stat file': {
-      topic: function () {
+    'the file info object': {
+      topic: function (content, stream) {
         async.parallel({
           'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'change.json')),
-          'cache': function (callback) {
-
-            setTimeout(function() {
-              fs.readFile(common.options.state, 'utf8', function (error, content) {
-                if (error) return callback(error, null);
-                callback(null, content === '' ? '' : JSON.parse(content));
-              });
-            }, 200);
+          'stream': function (callback) {
+            callback(null, stream);
           }
         }, this.callback);
       },
 
-      'should be updated': function (error, result) {
+      'should match origin file stat': function (error, result) {
         assert.ifError(error);
 
-        assert.deepEqual(result.cache['change.json'], {
-          mtime: result.origin.mtime.getTime(),
+        assert.deepEqual(result.stream.file, {
+          mtime: result.origin.mtime,
           size: result.origin.size
         });
       }
@@ -151,36 +145,30 @@ vows.describe('testing leaflet watcher').addBatch({
    'the content should be parsed by handlers': function (error, result) {
       assert.ifError(error);
 
-      assert.deepEqual(JSON.parse(result.content), {
+      assert.deepEqual(JSON.parse(result.content[0]), {
         first: 'first',
         second: 'second',
         state: result.expected
       });
     },
 
-    'the stat file': {
-      topic: function () {
+    'the file info object': {
+      topic: function (result) {
         async.parallel({
           'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'change.json')),
-          'cache': function (callback) {
-
-            // Since state.json is handled by equilibrium, there is no need for waiting for equilibrium
-            // to drain out before executing the callback, however this has the side effect
-            // that the testcase sometimes will fail, because the state.json file hasn't been updated
-            setTimeout(function () {
-              fs.readFile(common.options.state, 'utf8', callback);
-            }, 1000);
+          'stream': function (callback) {
+            callback(null, result.content[1]);
           }
         }, this.callback);
       },
 
-      'should be updated': function (error, result) {
+      'should match origin file stat': function (error, result) {
         assert.ifError(error);
 
-        assert.deepEqual({
-          mtime: result.origin.mtime.getTime(),
+        assert.deepEqual(result.stream.file, {
+          mtime: result.origin.mtime,
           size: result.origin.size
-        }, JSON.parse(result.cache)['change.json']);
+        });
       }
     },
 
