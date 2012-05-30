@@ -44,8 +44,9 @@ function Leaflet(options, callback) {
   this.ready = false;
 
   this.watching = false;
-  this.memory = 0;
+  this.cacheSize = 0;
 
+  this.memory = {};
   this.state = {};
   this.ignorefiles = {
     'filepath': [],
@@ -118,7 +119,7 @@ var types = ['B', 'KB', 'MB', 'GB'];
 
 Leaflet.prototype.memory = function (size) {
   if (typeof size === 'number') {
-    return this.memory = size;
+    return this.cacheSize = size;
   }
 
   // convert string to number
@@ -135,7 +136,7 @@ Leaflet.prototype.memory = function (size) {
   });
 
   // Calculate new size
-  return this.memory = size[0] * size[1];
+  return this.cacheSize = size[0] * size[1];
 };
 
 // Attach handler to given filetypes
@@ -231,7 +232,7 @@ Leaflet.prototype.convert = function (fromFiletype, toFiletype) {
 // or has been reset by Leaflet.watch
 Leaflet.prototype.read = function (filename, callback) {
   var self = this,
-      stream;
+      output, pipelink;
 
   if (this.ready === false) {
     return callback(new Error('leaflet object is not ready'));
@@ -256,32 +257,106 @@ Leaflet.prototype.read = function (filename, callback) {
     });
   }
 
-  // just read from cache
-  if (this.state[filename] && this.watching === false) {
-    stream = fs.createReadStream(cache, { bufferSize: chunkSize });
-    stream.pause();
+  // Get stores properties
+  var memory = this.memory[filename] || (this.memory[filename] = {
+    inProgress: false,
+    stream: null,
+    request: 0,
+    query: []
+  });
 
-    stream.file = { mtime: new Date(this.state[filename].mtime), size: this.state[filename].size };
-    process.nextTick(function () {
-      stream.emit('ready', stream.file);
+  var stat = this.state[filename];
+
+  // Increase request counter
+  memory.request += 1;
+
+  // Read from memory
+  if (memory.stream && this.cacheing) {
+    output = this.cache[filename].stream.relay();
+    output.pause();
+
+    // Add to callback query if fs.stat has not completted
+    if (memory.progress) {
+      memory.query.push(function (mtime) {
+        output.mtime = mtime;
+        process.nextTick(function () {
+          output.emit('stat');
+        });
+      });
+    }
+
+    // fs.stat has completeted stat.mtime is therefor live
+    else {
+      output.mtime = new Date(stat.mtime);
+      process.nextTick(function () {
+        output.emit('stat');
+      });
+    }
+
+    return output;
+  }
+
+  // in case this file isn't cached but should be cached
+  var cacheFile = (stat && resolveCache(this, memory));
+  if (cacheFile) {
+    pipelink = memory.stream = flower.memoryStream();
+
+    // cleanup cache memory
+    pipelink.once('close', function () {
+      resolveCache(self, memory);
     });
 
-    return stream;
+    // Live refresh memoryStream when source file is updated
+    if (this.watching) {
+      memory.watch = fs.watch(source, function (event) {
+        // TODO: what if the file was deleted?
+        if (event !== 'change') return;
+
+        // refresh memoryStream
+        memory.stream = flower.memoryStream();
+        compileSource(self, filename, source, cache, memory.stream);
+      });
+    }
+
+    output = pipelink.relay();
+    output.pause();
+  }
+
+  // just read from cache
+  if (stat && this.watching === false) {
+
+    if (cacheFile) {
+      fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(pipelink);
+    } else {
+      output = fs.createReadStream(cache, { bufferSize: chunkSize });
+      output.pause();
+    }
+
+    output.mtime = new Date(stat.mtime);
+    process.nextTick(function () {
+      output.emit('stat');
+    });
+
+    return output;
   }
 
   // create a relay stream since async handling will be needed
-  stream = flower.relayReadStream();
-  stream.pause();
+  if (!cacheFile) {
+    pipelink = output = flower.relayReadStream();
+    output.pause();
+  }
 
-  // just read from source
-  if (!this.state[filename] || this.watching === false) {
+  // at this point some async opration will be required before the streams can be linked
+  // set memory.inProgress flag, so mtime requests will be pushed to query
+  if (cacheFile) {
+    memory.inProgress = true;
+  }
 
-    process.nextTick(function () {
-      compileSource(self, filename, source, cache, stream);
-    });
+  // has never read from source before or dont need to validate source
+  if (!stat || this.watching === false) {
+    compileSource(self, filename, source, cache, pipelink);
 
-    // return relay stream, content will be relayed to this shortly
-    return stream;
+    return output;
   }
 
   // check source file for modification
@@ -291,21 +366,30 @@ Leaflet.prototype.read = function (filename, callback) {
       return callback(error, null);
     }
 
+    // Set file stat
+    memory.query.push(function (mtime) {
+      output.mtime = mtime;
+      output.emit('stat');
+    });
+
     // source has been modified, read from source
-    var info = self.state[filename];
-    if (!info || stat.mtime.getTime() > info.mtime || stat.size !== info.size) {
-      return compileSource(self, filename, source, cache, stream);
+    if (!stat || stat.mtime.getTime() > stat.mtime || stat.size !== stat.size) {
+      return compileSource(self, filename, source, cache, pipelink);
+    }
+
+    // stat has not changed execute query
+    // note: this could be moved up however since compileSource can be called by
+    // two reasons this is the simplest solution
+    var fn; while (fn = memory.query.slice()) {
+      fn(stat.mtime);
     }
 
     // source has not been modified, read from cache
-    fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(stream);
-
-    stream.file = { mtime: new Date(this.state[filename].mtime), size: this.state[filename].size };
-    stream.emit('ready', stream.file);
+    fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(pipelink);
   });
 
   // return relay stream, content will be relayed to this shortly
-  return stream;
+  return output;
 };
 
 // Add a file to the ignore list, if the `read` request match it we will claim that it don't exist
@@ -510,13 +594,15 @@ function compileSource(self, filename, source, cache, output) {
       return output.emit('error', error);
     }
 
-    // set mtime and emit ready
-    output.file = { mtime: stat.mtime, size: stat.size };
-    output.emit('ready', stream.file);
-
     // create cache subdirectory
     createDirectory(path.dirname(cache), function (error) {
       if (error) return output.emit('error', error);
+
+      // execute stat.mtime request query
+      var memory = self.memory[filename];
+      var fn; while (fn = memory.query.slice()) {
+        fn(stat.mtime);
+      }
 
       // create cache file write stream
       var write = fs.createWriteStream(cache);
@@ -529,7 +615,7 @@ function compileSource(self, filename, source, cache, output) {
       write.on('error', output.emit.bind(output, 'error'));
 
       // handle stat update
-      write.once('close', function () { updateStat(self, filename, stat); });
+      write.once('close', function () { updateStat(self, filename, stat, write.bytesWritten); });
       write.once('error', function () { updateStat(self, filename); });
     });
   });
@@ -637,12 +723,50 @@ function directorySearch(settings, query) {
   });
 }
 
+// Will check if the file is hot and clear cold memory
+function resolveCache(self, memory) {
+  if (this.cacheSize === Infinity) return true;
+  if (this.cacheSize === 0) return false;
+
+  // create files object sorted by number of requests
+  var files = Object.keys(self.cache).map(function (filename) {
+    return self.memory[filename];
+  }).filter(function (file) {
+    return (file.compiled !== undefined);
+  }).sort(function (a, b) {
+    return (a.request - b.request);
+  });
+
+  // filter files file array so it only contains files there should be cached
+  var bufferCount = 0;
+
+  files.filter(function (file) {
+    bufferCount += file.compiled;
+
+    if (bufferCount <= this.cacheSize) {
+      return true;
+    }
+
+    // Cleanup cold files
+    file.stream = null;
+    return false;
+  });
+
+  // return true if the current file exist in array
+  return files.indexOf(memory) !== -1;
+}
+
 // Update the stat
-function updateStat(self, filename, stat) {
+function updateStat(self, filename, stat, compiledSize) {
 
   // grap set value
-  if (arguments.length === 3) {
-    self.state[filename] = { mtime: stat.mtime.getTime(), size: stat.size };
+  if (arguments.length === 4) {
+    self.state[filename] = {
+      mtime: stat.mtime.getTime(),
+      size: stat.size,
+      compiled: compiledSize
+    };
+    self.memory[filename].compiled = compiledSize;
   } else {
     delete self.state[filename];
   }
