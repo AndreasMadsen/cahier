@@ -19,7 +19,7 @@ common.reset();
 var convert;
 var expexted;
 
-vows.describe('testing leaflet converter').addBatch({
+vows.describe('testing leaflet converter - stream based').addBatch({
 
   'when a leaflet object is created': {
     topic: function () {

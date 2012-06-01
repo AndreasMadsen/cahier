@@ -85,7 +85,7 @@ vows.describe('testing leaflet watcher').addBatch({
       });
     },
 
-    'the file info object': {
+    'the mtime info property': {
       topic: function (content, stream) {
         async.parallel({
           'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'change.json')),
@@ -98,10 +98,7 @@ vows.describe('testing leaflet watcher').addBatch({
       'should match origin file stat': function (error, result) {
         assert.ifError(error);
 
-        assert.deepEqual(result.stream.file, {
-          mtime: result.origin.mtime,
-          size: result.origin.size
-        });
+        assert.equal(result.origin.mtime.getTime(), result.stream.mtime.getTime());
       }
     },
 
@@ -152,7 +149,7 @@ vows.describe('testing leaflet watcher').addBatch({
       });
     },
 
-    'the file info object': {
+    'the mtime info property': {
       topic: function (result) {
         async.parallel({
           'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'change.json')),
@@ -165,10 +162,7 @@ vows.describe('testing leaflet watcher').addBatch({
       'should match origin file stat': function (error, result) {
         assert.ifError(error);
 
-        assert.deepEqual(result.stream.file, {
-          mtime: result.origin.mtime,
-          size: result.origin.size
-        });
+        assert.equal(result.origin.mtime.getTime(), result.stream.mtime.getTime());
       }
     },
 

@@ -86,7 +86,7 @@ exports.handleStream = function (stream, callback) {
       promise.emit('error', error);
     });
 
-    stream.once('ready', function () {
+    stream.once('stat', function () {
       stream.resume();
     });
   }

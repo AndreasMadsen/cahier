@@ -15,7 +15,7 @@ var vows = require('vows'),
 common.reset();
 
 var convert;
-vows.describe('testing leaflet converter').addBatch({
+vows.describe('testing leaflet converter - string based').addBatch({
 
   'when a leaflet object is created': {
     topic: function () {
@@ -89,9 +89,10 @@ vows.describe('testing leaflet converter').addBatch({
         setTimeout(function () {
           async.parallel({
             'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'static.json')),
+            'compiled': fs.stat.bind(fs, path.resolve(common.options.cache, 'static.json')),
             'cache': fs.readFile.bind(fs, common.options.state, 'utf8'),
             'stream': function (callback) {
-              callback(null, stream.file);
+              callback(null, stream.mtime);
             }
           }, self.callback);
         }, 200);
@@ -101,14 +102,12 @@ vows.describe('testing leaflet converter').addBatch({
 
         var statFile = JSON.parse(result.cache)['static.json'];
 
-        assert.deepEqual(statFile, {
-          mtime: result.origin.mtime.getTime(),
-          size: result.origin.size
-        });
+        assert.equal(statFile.mtime, result.stream.getTime());
 
         assert.deepEqual(statFile, {
-          mtime: result.stream.mtime.getTime(),
-          size: result.stream.size
+          mtime: result.origin.mtime.getTime(),
+          size: result.origin.size,
+          compiled: result.compiled.size
         });
       }
     },

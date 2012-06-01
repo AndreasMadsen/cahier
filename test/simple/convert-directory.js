@@ -15,7 +15,7 @@ var vows = require('vows'),
 common.reset();
 
 var convert;
-vows.describe('testing leaflet converter').addBatch({
+vows.describe('testing leaflet converter - create directory').addBatch({
 
   'when a leaflet object is created': {
     topic: function () {
@@ -81,6 +81,7 @@ vows.describe('testing leaflet converter').addBatch({
         setTimeout(function () {
           async.parallel({
             'origin': fs.stat.bind(fs, path.resolve(common.options.source, 'subdir/static.json')),
+            'compiled': fs.stat.bind(fs, path.resolve(common.options.cache, 'subdir/static.json')),
             'cache': fs.readFile.bind(fs, common.options.state, 'utf8')
           }, self.callback);
         }, 200);
@@ -89,7 +90,8 @@ vows.describe('testing leaflet converter').addBatch({
       'should be updated': function (error, result) {
         assert.deepEqual({
           mtime: result.origin.mtime.getTime(),
-          size: result.origin.size
+          size: result.origin.size,
+          compiled: result.compiled.size
         }, JSON.parse(result.cache)['subdir/static.json']);
       }
     },
