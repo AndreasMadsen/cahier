@@ -37,7 +37,7 @@ convert.handle('json', 'string', function (content, next) {
 var zlib = require('zlib');
 convert.handle(['json', 'js', 'css'], 'stream', function (stream, next) {
   var gzip = zlib.createGzip();
-      gzip.resume();
+      gzip.pause();
 
   next( stream.pipe(gzip) );
   stream.resume();
@@ -101,6 +101,9 @@ and the error be emitted in the returned stream object from `leaflet.read(filety
 The value of the properties can be `stream`, `buffer` or `string` and must reflect the usecase.
 In case `usetype` is a string both the `input` and `output` type will be the value of this string.
 
+In case that you decide to use `stream`, you must manually resume the input stream and pause
+output stream, before executeing the `stream.pause()`.
+
 ### leaflet.read(filepath)
 
 This method returns a `ReadStream` there can be piped to any `WritStream`. The method must
@@ -112,7 +115,12 @@ Any `../` or `./` will be handled correctly, but leaflet won't allow the user to
 the `source` directory. Any extra `../` indicating that will simply be skiped.
 
 Note that the returned `ReadStream` object may emit an `error` event, if any error was cached
-durrying the reading or compileing of the file.
+durrying the reading or compileing of the file. Also note that no data will be emitted from the
+stream, before you manually resume the `ReadStream`.
+
+Along with the normal `ReadStream` events and method, the stream will also emit a `stat` event.
+Once emitted a `stream.mtime` property will be set, this contains a `Date` object pointing to the
+`stat.mtime` of the source file.
 
 ### leaflet.ignore(filename)
 
