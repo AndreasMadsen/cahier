@@ -258,9 +258,17 @@ Leaflet.prototype.read = function (filename) {
   }
 
   // Get stores properties
-  var memory = getMemory(this, filename);
-
   var stat = this.state[filename];
+
+  var memory = this.memory[filename];
+  if (memory === undefined) {
+    memory = this.memory[filename] = {
+      inProgress: false,
+      stream: null,
+      request: 0,
+      query: []
+    };
+  }
 
   // Increase request counter
   memory.request += 1;
@@ -345,11 +353,16 @@ Leaflet.prototype.read = function (filename) {
   // set memory.inProgress flag, so mtime requests will be pushed to query
   if (cacheFile) {
     memory.inProgress = true;
+
+    memory.query.push(function (mtime) {
+      output.mtime = mtime;
+      output.emit('stat');
+    });
   }
 
   // has never read from source before or dont need to validate source
   if (!stat || this.watching === false) {
-    compileSource(self, filename, source, cache, pipelink);
+    compileSource(self, filename, source, cache, cacheFile, pipelink);
 
     return output;
   }
@@ -358,18 +371,12 @@ Leaflet.prototype.read = function (filename) {
   fs.stat(source, function (error, stat) {
     if (error) {
       updateStat(self, filename);
-      return callback(error, null);
+      return pipelink.emit('error', error);
     }
-
-    // Set file stat
-    memory.query.push(function (mtime) {
-      output.mtime = mtime;
-      output.emit('stat');
-    });
 
     // source has been modified, read from source
     if (!stat || stat.mtime.getTime() > stat.mtime || stat.size !== stat.size) {
-      return compileSource(self, filename, source, cache, pipelink);
+      return compileSource(self, filename, source, cache, cacheFile, pipelink);
     }
 
     // stat has not changed execute query
@@ -434,7 +441,7 @@ Leaflet.prototype.compile = function (callback) {
           return done();
         }
 
-        compileSource(self, filename, source, cache, streamCallback(done));
+        compileSource(self, filename, source, cache, false, streamCallback(done));
       },
 
       done: callback
@@ -523,7 +530,7 @@ var convertHandlers = {
 };
 
 // make a clean read
-function compileSource(self, filename, source, cache, output) {
+function compileSource(self, filename, source, cache, shouldCache, output) {
 
   async.waterfall([
 
@@ -594,9 +601,14 @@ function compileSource(self, filename, source, cache, output) {
       if (error) return output.emit('error', error);
 
       // execute stat.mtime request query
-      var memory = getMemory(self, filename);
-      var fn; while (fn = memory.query.shift()) {
-        fn(stat.mtime);
+      if (shouldCache) {
+        var memory = self.memory[fqqilename];
+        var fn; while (fn = memory.query.shift()) {
+          fn(stat.mtime);
+        }
+      } else {
+        output.mtime = stat.mtime;
+        output.emit('stat');
       }
 
       // create cache file write stream
@@ -781,20 +793,6 @@ function createDirectory(dirpath, callback) {
       callback(null);
     });
   });
-}
-
-function getMemory(self, filename) {
-
-  if (self.memory[filename] === undefined) {
-    self.memory[filename] = {
-      inProgress: false,
-      stream: null,
-      request: 0,
-      query: []
-    };
-  }
-
-  return self.memory[filename];
 }
 
 // Trim path safely
