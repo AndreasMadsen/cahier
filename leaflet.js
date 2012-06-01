@@ -230,12 +230,12 @@ Leaflet.prototype.convert = function (fromFiletype, toFiletype) {
 
 // Read and process file, if the file don't exist in memory, `write` directory
 // or has been reset by Leaflet.watch
-Leaflet.prototype.read = function (filename, callback) {
+Leaflet.prototype.read = function (filename) {
   var self = this,
       output, pipelink;
 
   if (this.ready === false) {
-    return callback(new Error('leaflet object is not ready'));
+    return new Error('leaflet object is not ready');
   }
 
   // absolute paths will be relative to read dir
@@ -258,12 +258,7 @@ Leaflet.prototype.read = function (filename, callback) {
   }
 
   // Get stores properties
-  var memory = this.memory[filename] || (this.memory[filename] = {
-    inProgress: false,
-    stream: null,
-    request: 0,
-    query: []
-  });
+  var memory = getMemory(this, filename);
 
   var stat = this.state[filename];
 
@@ -380,7 +375,7 @@ Leaflet.prototype.read = function (filename, callback) {
     // stat has not changed execute query
     // note: this could be moved up however since compileSource can be called by
     // two reasons this is the simplest solution
-    var fn; while (fn = memory.query.slice()) {
+    var fn; while (fn = memory.query.shift()) {
       fn(stat.mtime);
     }
 
@@ -599,8 +594,8 @@ function compileSource(self, filename, source, cache, output) {
       if (error) return output.emit('error', error);
 
       // execute stat.mtime request query
-      var memory = self.memory[filename];
-      var fn; while (fn = memory.query.slice()) {
+      var memory = getMemory(self, filename);
+      var fn; while (fn = memory.query.shift()) {
         fn(stat.mtime);
       }
 
@@ -729,7 +724,7 @@ function resolveCache(self, memory) {
   if (this.cacheSize === 0) return false;
 
   // create files object sorted by number of requests
-  var files = Object.keys(self.cache).map(function (filename) {
+  var files = Object.keys(self.memory).map(function (filename) {
     return self.memory[filename];
   }).filter(function (file) {
     return (file.compiled !== undefined);
@@ -786,6 +781,20 @@ function createDirectory(dirpath, callback) {
       callback(null);
     });
   });
+}
+
+function getMemory(self, filename) {
+
+  if (self.memory[filename] === undefined) {
+    self.memory[filename] = {
+      inProgress: false,
+      stream: null,
+      request: 0,
+      query: []
+    };
+  }
+
+  return self.memory[filename];
 }
 
 // Trim path safely
