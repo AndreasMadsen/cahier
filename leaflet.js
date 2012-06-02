@@ -260,15 +260,7 @@ Leaflet.prototype.read = function (filename) {
   // Get stores properties
   var stat = this.state[filename];
 
-  var memory = this.memory[filename];
-  if (memory === undefined) {
-    memory = this.memory[filename] = {
-      inProgress: false,
-      stream: null,
-      request: 0,
-      query: []
-    };
-  }
+  var memory = getMemory(this, filename);
 
   // Increase request counter
   memory.request += 1;
@@ -602,7 +594,7 @@ function compileSource(self, filename, source, cache, shouldCache, output) {
 
       // execute stat.mtime request query
       if (shouldCache) {
-        var memory = self.memory[fqqilename];
+        var memory = getMemory(self, filename)
         var fn; while (fn = memory.query.shift()) {
           fn(stat.mtime);
         }
@@ -763,6 +755,21 @@ function resolveCache(self, memory) {
   return files.indexOf(memory) !== -1;
 }
 
+function getMemory(self, filename) {
+  var memory = self.memory[filename];
+
+  if (memory === undefined) {
+    memory = self.memory[filename] = {
+      inProgress: false,
+      stream: null,
+      request: 0,
+      query: []
+    };
+  }
+
+  return memory;
+}
+
 // Update the stat
 function updateStat(self, filename, stat, compiledSize) {
 
@@ -773,7 +780,7 @@ function updateStat(self, filename, stat, compiledSize) {
       size: stat.size,
       compiled: compiledSize
     };
-    self.memory[filename].compiled = compiledSize;
+    getMemory(self, filename).compiled = compiledSize;
   } else {
     delete self.state[filename];
   }
