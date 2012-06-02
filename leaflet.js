@@ -584,7 +584,7 @@ function compileSource(self, filename, source, cache, output) {
       });
 
       stream.once('end', function () {
-        updateStat(self, filename, stat, write.bytesWritten);
+        updateStat(self, filename, stat, bytesEmitted);
       });
 
       // pipe compiled source to cache file and output stream
