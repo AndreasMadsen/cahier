@@ -714,7 +714,7 @@ function resolveCache(self, memory) {
   }).filter(function (file) {
     return (file.compiled !== undefined);
   }).sort(function (a, b) {
-    return (a.request - b.request);
+    return (b.request - a.request);
   });
 
   // filter files file array so it only contains files there should be cached

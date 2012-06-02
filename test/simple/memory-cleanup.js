@@ -15,25 +15,33 @@ var vows = require('vows'),
 // remove temp content
 common.reset();
 
-var filepath = path.resolve(common.fixture, 'bigfile.txt');
-var convert, expected, stdreadtime;
+var filepath = [
+  path.resolve(common.fixture, 'bigfile.txt'),
+  path.resolve(common.fixture, 'bigfile_2.txt')
+];
+var convert, expected = [], stdreadtime;
 
 vows.describe('testing leaflet memory handler').addBatch({
 
   'when a leaflet object is created': {
     topic: function () {
       var self = this;
-
-      // Create a 0.5 KB big file
-      var content = crypto.randomBytes(256).toString('hex');
-      fs.writeFileSync(filepath, content);
+      var content;
 
       // will create a 0.5 KB string
       var addition = crypto.randomBytes(256).toString('hex');
 
-      // store pseudo compiled content
-      expected = content + addition;
+      // Create a 0.5 KB big file
+      content = crypto.randomBytes(256).toString('hex');
+      fs.writeFileSync(filepath[0], content);
+      expected[0] = content + addition;
 
+      // Create a 0.5 KB big file
+      content = crypto.randomBytes(256).toString('hex');
+      fs.writeFileSync(filepath[1], content);
+      expected[1] = content + addition;
+
+      // Create leaflet object
       convert = leaflet(common.options, function (error) {
         self.callback(error, null);
       });
@@ -52,7 +60,7 @@ vows.describe('testing leaflet memory handler').addBatch({
 
 }).addBatch({
 
-  'when reading for first time': {
+  'when reading file 1 for first time': {
     topic: function () {
       return common.handleStream(convert.read('bigfile.txt'));
     },
@@ -69,13 +77,13 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       assert.equal(content.length, 1024);
-      assert.equal(content, expected);
+      assert.equal(content, expected[0]);
     }
   }
 
 }).addBatch({
 
-  'when reading for the second time': {
+  'when reading file 1 for the second time': {
     topic: function () {
       var self = this;
 
@@ -101,13 +109,13 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       assert.equal(content.length, 1024);
-      assert.equal(content, expected);
+      assert.equal(content, expected[0]);
     }
   }
 
 }).addBatch({
 
-  'when reading for the third time': {
+  'when reading file 1 for the third time': {
     topic: function () {
       var self = this;
       var now = Date.now();
@@ -133,7 +141,74 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       assert.equal(content.length, 1024);
-      assert.equal(content, expected);
+      assert.equal(content, expected[0]);
+    }
+  }
+
+}).addBatch({
+
+  'when reading file 2 many times': {
+    topic: function () {
+      async.parallel([
+        common.handleStream.bind(null, convert.read('bigfile_2.txt')),
+        common.handleStream.bind(null, convert.read('bigfile_2.txt')),
+        common.handleStream.bind(null, convert.read('bigfile_2.txt'))
+      ], this.callback);
+    },
+
+    'the internal request counter should be set': function (error, content) {
+      assert.ifError(error);
+
+      // not public API, but there is no real way to test this
+      // because of the transparenty in leaflet
+      assert.equal(convert.cache['bigfile_2.txt'].request, 3);
+      assert.equal(convert.cache['bigfile_2.txt'].stream, null);
+    },
+
+    'in this case the filesize should be 1 KB': function (error, content) {
+      assert.ifError(error);
+
+      assert.equal(content[0][0].length, 1024);
+      assert.equal(content[0][0], expected[1]);
+
+      assert.equal(content[1][0].length, 1024);
+      assert.equal(content[1][0], expected[1]);
+
+      assert.equal(content[2][0].length, 1024);
+      assert.equal(content[2][0], expected[1]);
+    }
+  }
+
+}).addBatch({
+
+  'when reading file 2 one more time than file 1': {
+    topic: function () {
+      var self = this;
+      var now = Date.now();
+
+      return common.handleStream(convert.read('bigfile_2.txt'), function (error, content) {
+        self.callback(error, content, Date.now() - now);
+      });
+    },
+
+    'the request should be read from memory': function (error, content, cachetime) {
+      assert.ifError(error);
+
+      // not public API, but there is no real way to test this
+      // because of the transparenty in leaflet
+      assert.equal(convert.cache['bigfile_2.txt'].request, 4);
+      assert.notEqual(convert.cache['bigfile_2.txt'].stream, null);
+      assert.equal(convert.cache['bigfile.txt'].stream, null);
+
+      // Bad testcase, but if this is not true there is clearly something wrong
+      assert.isTrue(cachetime < stdreadtime);
+    },
+
+    'in this case the filesize should be 1 KB': function (error, content) {
+      assert.ifError(error);
+
+      assert.equal(content.length, 1024);
+      assert.equal(content, expected[1]);
     }
   }
 
