@@ -3,5 +3,6 @@
 /test/temp/
 /test/fixture/change.json
 /test/fixture/bigfile.txt
+/test/fixture/bigfile_2.txt
 npm-debug.log
 
