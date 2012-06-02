@@ -258,7 +258,7 @@ Leaflet.prototype.read = function (filename) {
   }
 
   // Get stores properties
-  var stat = this.state[filename];
+  var cacheStat = this.state[filename];
 
   var memory = getMemory(this, filename);
 
@@ -266,7 +266,7 @@ Leaflet.prototype.read = function (filename) {
   memory.request += 1;
 
   // Read from memory
-  if (memory.stream && this.cacheing) {
+  if (memory.stream && this.cacheSize) {
     output = this.cache[filename].stream.relay();
     output.pause();
 
@@ -282,7 +282,7 @@ Leaflet.prototype.read = function (filename) {
 
     // fs.stat has completeted stat.mtime is therefor live
     else {
-      output.mtime = new Date(stat.mtime);
+      output.mtime = new Date(cacheStat.mtime);
       process.nextTick(function () {
         output.emit('stat');
       });
@@ -292,8 +292,9 @@ Leaflet.prototype.read = function (filename) {
   }
 
   // in case this file isn't cached but should be cached
-  var cacheFile = (stat && resolveCache(this, memory));
-  if (cacheFile) {
+  var memorizeFile = (cacheStat && resolveCache(this, memory));
+
+  if (memorizeFile) {
     pipelink = memory.stream = flower.memoryStream();
 
     // cleanup cache memory
@@ -318,16 +319,16 @@ Leaflet.prototype.read = function (filename) {
   }
 
   // just read from cache
-  if (stat && this.watching === false) {
+  if (cacheStat && this.watching === false) {
 
-    if (cacheFile) {
+    if (memorizeFile) {
       fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(pipelink);
     } else {
       output = fs.createReadStream(cache, { bufferSize: chunkSize });
       output.pause();
     }
 
-    output.mtime = new Date(stat.mtime);
+    output.mtime = new Date(cacheStat.mtime);
     process.nextTick(function () {
       output.emit('stat');
     });
@@ -336,14 +337,14 @@ Leaflet.prototype.read = function (filename) {
   }
 
   // create a relay stream since async handling will be needed
-  if (!cacheFile) {
+  if (!memorizeFile) {
     pipelink = output = flower.relayReadStream();
     output.pause();
   }
 
   // at this point some async opration will be required before the streams can be linked
   // set memory.inProgress flag, so mtime requests will be pushed to query
-  if (cacheFile) {
+  if (memorizeFile) {
     memory.inProgress = true;
 
     memory.query.push(function (mtime) {
@@ -353,8 +354,8 @@ Leaflet.prototype.read = function (filename) {
   }
 
   // has never read from source before or dont need to validate source
-  if (!stat || this.watching === false) {
-    compileSource(self, filename, source, cache, cacheFile, pipelink);
+  if (!cacheStat || this.watching === false) {
+    compileSource(self, filename, source, cache, memorizeFile, pipelink);
 
     return output;
   }
@@ -367,15 +368,20 @@ Leaflet.prototype.read = function (filename) {
     }
 
     // source has been modified, read from source
-    if (!stat || stat.mtime.getTime() > stat.mtime || stat.size !== stat.size) {
-      return compileSource(self, filename, source, cache, cacheFile, pipelink);
+    if (!cacheStat || stat.mtime.getTime() > cacheStat.mtime || stat.size !== cacheStat.size) {
+      return compileSource(self, filename, source, cache, memorizeFile, pipelink);
     }
 
     // stat has not changed execute query
     // note: this could be moved up however since compileSource can be called by
     // two reasons this is the simplest solution
-    var fn; while (fn = memory.query.shift()) {
-      fn(stat.mtime);
+    if (memorizeFile) {
+      var fn; while (fn = memory.query.shift()) {
+        fn(cacheStat.mtime);
+      }
+    } else {
+      pipelink.mtime = cacheStat.mtime;
+      pipelink.emit('stat');
     }
 
     // source has not been modified, read from cache
@@ -522,7 +528,7 @@ var convertHandlers = {
 };
 
 // make a clean read
-function compileSource(self, filename, source, cache, shouldCache, output) {
+function compileSource(self, filename, source, cache, shouldMemorize, output) {
 
   async.waterfall([
 
@@ -593,7 +599,7 @@ function compileSource(self, filename, source, cache, shouldCache, output) {
       if (error) return output.emit('error', error);
 
       // execute stat.mtime request query
-      if (shouldCache) {
+      if (shouldMemorize) {
         var memory = getMemory(self, filename)
         var fn; while (fn = memory.query.shift()) {
           fn(stat.mtime);
@@ -724,8 +730,8 @@ function directorySearch(settings, query) {
 
 // Will check if the file is hot and clear cold memory
 function resolveCache(self, memory) {
-  if (this.cacheSize === Infinity) return true;
-  if (this.cacheSize === 0) return false;
+  if (self.cacheSize === Infinity) return true;
+  if (self.cacheSize === 0) return false;
 
   // create files object sorted by number of requests
   var files = Object.keys(self.memory).map(function (filename) {
@@ -742,7 +748,7 @@ function resolveCache(self, memory) {
   files.filter(function (file) {
     bufferCount += file.compiled;
 
-    if (bufferCount <= this.cacheSize) {
+    if (bufferCount <= self.cacheSize) {
       return true;
     }
 
