@@ -46,7 +46,7 @@ function Leaflet(options, callback) {
   this.watching = false;
   this.cacheSize = 0;
 
-  this.memory = {};
+  this.cache = {};
   this.state = {};
   this.ignorefiles = {
     'filepath': [],
@@ -124,7 +124,7 @@ Leaflet.prototype.memory = function (size) {
 
   // convert string to number
   size = size.split(" ").map(function (value) {
-    var exp = types.indexOf(types);
+    var exp = types.indexOf(value);
 
     // Parse string as number
     if (exp === -1) {
@@ -277,7 +277,7 @@ Leaflet.prototype.read = function (filename) {
   }
 
   // in case this file isn't cached but should be cached
-  var memorizeFile = (cacheStat && resolveCache(this, memory));
+  var memorizeFile = (!!cacheStat && resolveCache(this, memory));
 
   if (memorizeFile) {
     pipelink = memory.stream = flower.memoryStream();
@@ -569,7 +569,7 @@ function compileSource(self, filename, source, cache, output) {
       if (error) return output.emit('error', error);
 
       // execute stat.mtime request query
-      var memory = self.memory[filename];
+      var memory = self.cache[filename];
       if (memory) {
         memory.inProgress = false;
         emitStat(self, filename, output, stat.mtime);
@@ -696,12 +696,12 @@ function directorySearch(settings, query) {
 
 // Will check if the file is hot and clear cold memory
 function resolveCache(self, memory) {
-  if (self.cacheSize === Infinity) return true;
   if (self.cacheSize === 0) return false;
+  if (self.cacheSize === Infinity) return true;
 
   // create files object sorted by number of requests
-  var files = Object.keys(self.memory).map(function (filename) {
-    return self.memory[filename];
+  var files = Object.keys(self.cache).map(function (filename) {
+    return self.cache[filename];
   }).filter(function (file) {
     return (file.compiled !== undefined);
   }).sort(function (a, b) {
@@ -728,10 +728,10 @@ function resolveCache(self, memory) {
 }
 
 function getMemory(self, filename) {
-  var memory = self.memory[filename];
+  var memory = self.cache[filename];
 
   if (memory === undefined) {
-    memory = self.memory[filename] = {
+    memory = self.cache[filename] = {
       inProgress: false,
       stream: null,
       request: 0,
@@ -744,7 +744,7 @@ function getMemory(self, filename) {
 
 // Will emit stat on the stream
 function emitStat(self, filename, stream, mtime) {
-  var memory = self.memory[filename];
+  var memory = self.cache[filename];
 
   // a memory stream do exist
   if (memory && memory.inProgress) {
