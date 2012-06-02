@@ -278,7 +278,6 @@ Leaflet.prototype.read = function (filename) {
 
   // in case this file isn't cached but should be cached
   var memorizeFile = (!!cacheStat && resolveCache(this, memory));
-
   if (memorizeFile) {
     pipelink = memory.stream = flower.memoryStream();
 
@@ -578,15 +577,25 @@ function compileSource(self, filename, source, cache, output) {
       // create cache file write stream
       var write = fs.createWriteStream(cache);
 
+      // set stat and cache properties when stream is done emitting
+      var bytesEmitted = 0;
+      stream.on('data', function (chunk) {
+        bytesEmitted += chunk.length;
+      });
+
+      stream.once('end', function () {
+        updateStat(self, filename, stat, write.bytesWritten);
+      });
+
       // pipe compiled source to cache file and output stream
       stream.pipe(write);
       stream.pipe(output);
+
 
       // also pipe errors from write to output so the users will get the all
       write.on('error', output.emit.bind(output, 'error'));
 
       // handle stat update
-      write.once('close', function () { updateStat(self, filename, stat, write.bytesWritten); });
       write.once('error', function () { updateStat(self, filename); });
     });
   });
