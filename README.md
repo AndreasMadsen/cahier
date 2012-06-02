@@ -63,8 +63,6 @@ function ready(error) {
 
 ##API documentation
 
-_This module is not complete the below API is not implemented fully and may change_
-
 ### leaflet = LeafLet(options, callback)
 
 `require('leaflet')` will return function there when executed returns a new leaflet instance.
