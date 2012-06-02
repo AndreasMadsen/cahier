@@ -270,23 +270,8 @@ Leaflet.prototype.read = function (filename) {
     output = this.cache[filename].stream.relay();
     output.pause();
 
-    // Add to callback query if fs.stat has not completted
-    if (memory.progress) {
-      memory.query.push(function (mtime) {
-        output.mtime = mtime;
-        process.nextTick(function () {
-          output.emit('stat');
-        });
-      });
-    }
-
-    // fs.stat has completeted stat.mtime is therefor live
-    else {
-      output.mtime = new Date(cacheStat.mtime);
-      process.nextTick(function () {
-        output.emit('stat');
-      });
-    }
+    // Add stat emit to query or emit now if ready
+    emitStat(self, filename, output, new Date(cacheStat.mtime));
 
     return output;
   }
@@ -328,10 +313,8 @@ Leaflet.prototype.read = function (filename) {
       output.pause();
     }
 
-    output.mtime = new Date(cacheStat.mtime);
-    process.nextTick(function () {
-      output.emit('stat');
-    });
+    // emit stat event to output
+    emitStat(self, filename, output, new Date(cacheStat.mtime));
 
     return output;
   }
@@ -347,15 +330,12 @@ Leaflet.prototype.read = function (filename) {
   if (memorizeFile) {
     memory.inProgress = true;
 
-    memory.query.push(function (mtime) {
-      output.mtime = mtime;
-      output.emit('stat');
-    });
+   emitStat(self, filename, output);
   }
 
   // has never read from source before or dont need to validate source
   if (!cacheStat || this.watching === false) {
-    compileSource(self, filename, source, cache, memorizeFile, pipelink);
+    compileSource(self, filename, source, cache, pipelink);
 
     return output;
   }
@@ -369,20 +349,14 @@ Leaflet.prototype.read = function (filename) {
 
     // source has been modified, read from source
     if (!cacheStat || stat.mtime.getTime() > cacheStat.mtime || stat.size !== cacheStat.size) {
-      return compileSource(self, filename, source, cache, memorizeFile, pipelink);
+      return compileSource(self, filename, source, cache, pipelink);
     }
 
     // stat has not changed execute query
     // note: this could be moved up however since compileSource can be called by
     // two reasons this is the simplest solution
-    if (memorizeFile) {
-      var fn; while (fn = memory.query.shift()) {
-        fn(cacheStat.mtime);
-      }
-    } else {
-      pipelink.mtime = cacheStat.mtime;
-      pipelink.emit('stat');
-    }
+    memory.inProgress = false;
+    emitStat(self, filename, output, stat.mtime);
 
     // source has not been modified, read from cache
     fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(pipelink);
@@ -439,7 +413,7 @@ Leaflet.prototype.compile = function (callback) {
           return done();
         }
 
-        compileSource(self, filename, source, cache, false, streamCallback(done));
+        compileSource(self, filename, source, cache, streamCallback(done));
       },
 
       done: callback
@@ -528,7 +502,7 @@ var convertHandlers = {
 };
 
 // make a clean read
-function compileSource(self, filename, source, cache, shouldMemorize, output) {
+function compileSource(self, filename, source, cache, output) {
 
   async.waterfall([
 
@@ -599,14 +573,10 @@ function compileSource(self, filename, source, cache, shouldMemorize, output) {
       if (error) return output.emit('error', error);
 
       // execute stat.mtime request query
-      if (shouldMemorize) {
-        var memory = getMemory(self, filename)
-        var fn; while (fn = memory.query.shift()) {
-          fn(stat.mtime);
-        }
-      } else {
-        output.mtime = stat.mtime;
-        output.emit('stat');
+      var memory = self.memory[filename];
+      if (memory) {
+        memory.inProgress = false;
+        emitStat(self, filename, output, stat.mtime);
       }
 
       // create cache file write stream
@@ -774,6 +744,33 @@ function getMemory(self, filename) {
   }
 
   return memory;
+}
+
+// Will emit stat on the stream
+function emitStat(self, filename, stream, mtime) {
+  var memory = self.memory[filename];
+
+  // a memory stream do exist
+  if (memory && memory.inProgress) {
+    memory.query.push(function (mtime) {
+      stream.mtime = mtime;
+      stream.emit('stat');
+    });
+    return;
+  }
+
+  // execute query
+  if (memory && memory.query.length) {
+    var fn; while (fn = memory.query.shift()) {
+      fn(mtime);
+    }
+    return;
+  }
+
+  stream.mtime = mtime;
+  process.nextTick(function () {
+    stream.emit('stat');
+  });
 }
 
 // Update the stat
