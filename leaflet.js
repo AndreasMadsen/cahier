@@ -423,10 +423,6 @@ Leaflet.prototype.compile = function (callback) {
 
 // Watch `read` directory for changes and update files once they are requested
 Leaflet.prototype.watch = function () {
-  if (this.ready === false) {
-    throw new Error('leaflet object is not ready');
-  }
-
   this.watching = true;
 };
 
