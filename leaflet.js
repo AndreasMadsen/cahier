@@ -4,7 +4,6 @@
  */
 
 var fs = require('fs');
-var util = require('util');
 var path = require('path');
 var async = require('async');
 var mkdirp = require('mkdirp');
@@ -281,6 +280,12 @@ Leaflet.prototype.read = function (filename) {
   if (memorizeFile) {
     pipelink = memory.stream = flower.memoryStream();
 
+    // since there is no link between memory.relay().resume and source.resume
+    // we will source.resume as soon as something has been piped to memory
+    pipelink.once('pipe', function (source) {
+      source.resume();
+    });
+
     // cleanup cache memory
     pipelink.once('close', function () {
       resolveCache(self, memory);
@@ -288,12 +293,22 @@ Leaflet.prototype.read = function (filename) {
 
     // Live refresh memoryStream when source file is updated
     if (this.watching) {
-      memory.watch = fs.watch(source, function (event) {
+      memory.watch = fs.watch(source, { persistent: false }, function (event) {
         // TODO: what if the file was deleted?
         if (event !== 'change') return;
 
+        var step = memory.stream.modified || 1;
+
         // refresh memoryStream
         memory.stream = flower.memoryStream();
+        memory.stream.modified = step + 1;
+
+        // since there is no link between memory.relay().resume and source.resume
+        // we will source.resume as soon as something has been piped to memory
+        memory.stream.once('pipe', function (source) {
+          source.resume();
+        });
+
         compileSource(self, filename, source, cache, memory.stream);
       });
     }
@@ -358,7 +373,9 @@ Leaflet.prototype.read = function (filename) {
     emitStat(self, filename, output, stat.mtime);
 
     // source has not been modified, read from cache
-    fs.createReadStream(cache, { bufferSize: chunkSize }).pipe(pipelink);
+    var cacheStream = fs.createReadStream(cache, { bufferSize: chunkSize });
+        cacheStream.pause();
+        cacheStream.pipe(pipelink);
   });
 
   // return relay stream, content will be relayed to this shortly
