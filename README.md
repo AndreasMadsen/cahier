@@ -85,12 +85,14 @@ The `.handle` method require three arguments `filetype`, `usetype` and `handler`
 an array. The value of the array items or string should only be the file extension name.
 Note that if `filetype` is not specified the `handle` function will attached to all filetypes.
 
-`handler` is a function there is executed with two arguments `content` and `next`:
+`handler` is a function there  is executed with three arguments `content` and `next` and `file`:
 * content: is the current content of the file, this can be a `stream` a `buffer` or
 a `string`. The type depend on the `usetype` argument.
 * next: is a function that you must call with a output `stream`, `buffer` or `string`.
 You can also execute it with an `error` object, in that case all future filehandlers will be skiped,
 and the error be emitted in the returned stream object from `leaflet.read(filetype)`.
+* `file` is an object containing a `path` property its value is an relative path to handled file.
+Note that file argument is rarely need, but can be useful in debugging and edgecases.
 
 `usetype` must be a string or an `object`, the object must contain two properties:
 * input: the type of the first argument that the handle function is called with.

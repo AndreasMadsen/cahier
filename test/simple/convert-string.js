@@ -37,9 +37,10 @@ vows.describe('testing leaflet converter - string based').addBatch({
             next( JSON.stringify(obj) );
           });
 
-          convert.handle('json', 'string', function (content, next) {
+          convert.handle('json', 'string', function (content, next, file) {
             var obj = JSON.parse(content);
                 obj.second = 'second';
+                obj.file = file;
 
             next( JSON.stringify(obj) );
           });
@@ -78,7 +79,8 @@ vows.describe('testing leaflet converter - string based').addBatch({
         zero: 'zero',
         position: 'root',
         first: 'first',
-        second: 'second'
+        second: 'second',
+        file: { path: 'static.json' }
       });
     },
 
@@ -124,7 +126,8 @@ vows.describe('testing leaflet converter - string based').addBatch({
           zero: 'zero',
           position: 'root',
           first: 'first',
-          second: 'second'
+          second: 'second',
+          file: { path: 'static.json' }
         });
       }
     }
@@ -165,7 +168,8 @@ vows.describe('testing leaflet converter - string based').addBatch({
           position: 'root',
           first: 'first',
           second: 'second',
-          manipulated: true
+          manipulated: true,
+          file: { path: 'static.json' }
         });
       }
     }

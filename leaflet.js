@@ -442,7 +442,7 @@ Leaflet.prototype.watch = function () {
   this.watching = true;
 };
 
-function createHandleWrap(compiler, inputType, outputType) {
+function createHandleWrap(compiler, file, inputType, outputType) {
   var convert = convertHandlers[inputType][outputType];
 
   return function (input, callback) {
@@ -450,13 +450,15 @@ function createHandleWrap(compiler, inputType, outputType) {
     convert(input, function (error, input) {
       if (error) return callback(error, null);
 
-      compiler(input, function (result) {
+      function cb (result) {
         if (result instanceof Error) {
           return callback(result, null);
         }
 
         callback(null, result);
-      });
+      }
+
+      compiler(input, cb, file);
     });
   };
 }
@@ -548,8 +550,13 @@ function compileSource(self, filename, source, cache, output) {
     // parse file stream
     function (fd, stat, stream, callback) {
 
+      // create file object (3th arguments)
+      var file = {
+        path: filename
+      };
+
       // resolve the order of compliers
-      var result = resolveHandlers(self, path.extname(filename).slice(1));
+      var result = resolveHandlers(self, path.extname(filename).slice(1), file);
       var handlers = result.handlers;
       var prevType = result.prevType;
       var converter = convertHandlers[prevType].stream;
@@ -618,7 +625,7 @@ function compileSource(self, filename, source, cache, output) {
   });
 }
 
-function resolveHandlers(self, ext, prevType, ignore) {
+function resolveHandlers(self, ext, file, prevType, ignore) {
 
   // previous will by default be stream, since fs.createReadStream returns a stream
   prevType = prevType || 'stream';
@@ -641,14 +648,14 @@ function resolveHandlers(self, ext, prevType, ignore) {
 
     // Apply chain subhandlers to array
     if (handle.chain) {
-      var result = resolveHandlers(self, handle.chain, prevType, true);
+      var result = resolveHandlers(self, handle.chain, file, prevType, true);
       handlers.push.apply(handlers, result.handlers);
       prevType = result.prevType;
       return;
     }
 
     // Apply normal handlers
-    handlers.push(createHandleWrap(handle.method, prevType, handle.input));
+    handlers.push(createHandleWrap(handle.method, file, prevType, handle.input));
     prevType = handle.output;
   });
 
