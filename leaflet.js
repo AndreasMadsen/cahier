@@ -557,7 +557,8 @@ function compileSource(self, filename, source, cache, output) {
 
       // create file object (3th arguments)
       var file = {
-        path: filename
+        path: filename,
+        mtime: stat.mtime
       };
 
       // resolve the order of compliers

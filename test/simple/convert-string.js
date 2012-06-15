@@ -14,6 +14,8 @@ var vows = require('vows'),
 // remove temp content
 common.reset();
 
+var mtimeString = fs.statSync(path.join(common.fixture, 'static.json')).mtime.toJSON();
+
 var convert;
 vows.describe('testing leaflet converter - string based').addBatch({
 
@@ -80,7 +82,7 @@ vows.describe('testing leaflet converter - string based').addBatch({
         position: 'root',
         first: 'first',
         second: 'second',
-        file: { path: 'static.json' }
+        file: { path: 'static.json', mtime: mtimeString }
       });
     },
 
@@ -127,7 +129,7 @@ vows.describe('testing leaflet converter - string based').addBatch({
           position: 'root',
           first: 'first',
           second: 'second',
-          file: { path: 'static.json' }
+          file: { path: 'static.json', mtime: mtimeString }
         });
       }
     }
@@ -169,7 +171,7 @@ vows.describe('testing leaflet converter - string based').addBatch({
           first: 'first',
           second: 'second',
           manipulated: true,
-          file: { path: 'static.json' }
+          file: { path: 'static.json', mtime: mtimeString }
         });
       }
     }
