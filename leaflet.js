@@ -74,12 +74,17 @@ function Leaflet(options, callback) {
 
         // Read JSON file
         fs.readFile(options.state, 'utf8', function (error, content) {
+          if (error) return callback(error);
 
-          // Parse JSON and catch errors
-          try {
-            self.stat = JSON.parse(content);
-          } catch (error) {
-            return callback(error);
+          if (content === '') {
+            self.stat = {};
+          } else {
+            // Parse JSON and catch errors
+            try {
+              self.stat = JSON.parse(content);
+            } catch (error) {
+              return callback(error);
+            }
           }
 
           callback();
