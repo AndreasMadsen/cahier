@@ -25,7 +25,7 @@
   ],
   "dependencies": {
     "equilibrium": "0.2.x",
-    "flower": "0.4.x",
+    "flower": "0.5.x",
     "async": "0.1.x",
     "mkdirp": "*"
   },
