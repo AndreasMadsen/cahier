@@ -1,7 +1,7 @@
 {
   "name": "leaflet",
   "description": "Static file conversion, writing and reading",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": "Andreas Madsen <amwebdk@gmail.com>",
   "scripts": {
     "test": "vows test/simple/* --spec --isolate"
