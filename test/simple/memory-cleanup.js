@@ -21,6 +21,12 @@ var filepath = [
 ];
 var convert, expected = [], stdreadtime;
 
+// filesize is 1024 KB (1 MB)
+var size = 1024;
+
+var filesize = 1024 * size / 2;
+var buffersize = filesize * 4;
+
 vows.describe('testing leaflet memory handler').addBatch({
 
   'when a leaflet object is created': {
@@ -28,16 +34,16 @@ vows.describe('testing leaflet memory handler').addBatch({
       var self = this;
       var content;
 
-      // will create a 0.5 KB string
-      var addition = crypto.randomBytes(256).toString('hex');
+      // will create a filesize big string
+      var addition = crypto.randomBytes(filesize).toString('hex');
 
-      // Create a 0.5 KB big file
-      content = crypto.randomBytes(256).toString('hex');
+      // Create a filesize big file
+      content = crypto.randomBytes(filesize).toString('hex');
       fs.writeFileSync(filepath[0], content);
       expected[0] = content + addition;
 
-      // Create a 0.5 KB big file
-      content = crypto.randomBytes(256).toString('hex');
+      // Create a filesize big file
+      content = crypto.randomBytes(filesize).toString('hex');
       fs.writeFileSync(filepath[1], content);
       expected[1] = content + addition;
 
@@ -50,7 +56,7 @@ vows.describe('testing leaflet memory handler').addBatch({
         next( content + addition );
       });
 
-      convert.memory('1 KB');
+      convert.memory((size * 2) + ' KB');
     },
 
     'there shoud not be any errors': function (error, dum) {
@@ -76,7 +82,7 @@ vows.describe('testing leaflet memory handler').addBatch({
     'in this case the filesize should be 1 KB': function (error, content) {
       assert.ifError(error);
 
-      assert.equal(content.length, 1024);
+      assert.equal(content.length, buffersize);
       assert.equal(content, expected[0]);
     }
   }
@@ -108,7 +114,7 @@ vows.describe('testing leaflet memory handler').addBatch({
     'in this case the filesize should be 1 KB': function (error, content) {
       assert.ifError(error);
 
-      assert.equal(content.length, 1024);
+      assert.equal(content.length, buffersize);
       assert.equal(content, expected[0]);
     }
   }
@@ -140,7 +146,7 @@ vows.describe('testing leaflet memory handler').addBatch({
     'in this case the filesize should be 1 KB': function (error, content) {
       assert.ifError(error);
 
-      assert.equal(content.length, 1024);
+      assert.equal(content.length, buffersize);
       assert.equal(content, expected[0]);
     }
   }
@@ -168,13 +174,13 @@ vows.describe('testing leaflet memory handler').addBatch({
     'in this case the filesize should be 1 KB': function (error, content) {
       assert.ifError(error);
 
-      assert.equal(content[0][0].length, 1024);
+      assert.equal(content[0][0].length, buffersize);
       assert.equal(content[0][0], expected[1]);
 
-      assert.equal(content[1][0].length, 1024);
+      assert.equal(content[1][0].length, buffersize);
       assert.equal(content[1][0], expected[1]);
 
-      assert.equal(content[2][0].length, 1024);
+      assert.equal(content[2][0].length, buffersize);
       assert.equal(content[2][0], expected[1]);
     }
   }
@@ -207,7 +213,7 @@ vows.describe('testing leaflet memory handler').addBatch({
     'in this case the filesize should be 1 KB': function (error, content) {
       assert.ifError(error);
 
-      assert.equal(content.length, 1024);
+      assert.equal(content.length, buffersize);
       assert.equal(content, expected[1]);
     }
   }
