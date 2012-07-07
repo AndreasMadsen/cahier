@@ -12,7 +12,7 @@ var Stream = require('stream');
 var flower = require('flower');
 
 // node < 0.8 compatibility
-var exists = fs.exists || path.exists;
+var exists = fs.exists || fs.exists;
 
 // platform compatibility
 var dirSplit = process.platform === 'win32' ? '\\' : '/';
