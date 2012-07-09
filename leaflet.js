@@ -506,12 +506,14 @@ var convertHandlers = {
   'stream': {
     'buffer': function (input, callback) {
       flower.stream2buffer(input, callback);
+      input.resume();
     },
 
     'string': function (input, callback) {
       flower.stream2buffer(input, function (error, input) {
         callback(error, input && input.toString());
       });
+      input.resume();
     },
 
     'stream': function (input, callback) {
