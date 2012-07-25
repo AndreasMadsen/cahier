@@ -24,6 +24,7 @@
     "copy"
   ],
   "dependencies": {
+    "graceful-fs": "1.1.x",
     "equilibrium": "0.2.x",
     "flower": "0.5.x",
     "async": "0.1.x",
