@@ -1,39 +1,39 @@
-#Leaflet
+#Cahier
 
-**Leaflet is a high performance static file reading module, without the network stuf.**
+**Cahier is a high performance static file reading module, without the network stuf.**
 
-> Leaflet will handle file convertion, compression and cacheing in both memory and on HDD.
+> Cahier will handle file convertion, compression and cacheing in both memory and on HDD.
 > It is totally stream based, but allow you to use both buffers and strings if needed.
 > It also protects your filesystem, since it won't allow to read below the specifed source directory.
 
 ##Installation
 
 ```sheel
-npm install leaflet
+npm install cahier
 ```
 
 ##Example
 
 ```JavaScript
-var leaflet = require('leaflet');
+var cahier = require('cahier');
 
-// The leaflet compiler require a source path, a cache path
+// The cahier compiler require a source path, a cache path
 // and a state filepath. The ready callback will be execute once
 // the state file is read and the necessary are created
-var convert = leaflet({
+var convert = cahier({
   'source': path.resolve('./source'),
   'cache': path.resolve('./cache'),
   'state': path.resolve('./state.json')
 }, ready);
 
-// Leaflet allow you to attach handlers to filetypes
+// Cahier allow you to attach handlers to filetypes
 // This is an example of how to compress json files
 convert.handle('json', 'string', function (content, next) {
   next( JSON.stringify(JSON.parse(content)) );
 });
 
-// Leaflet also supports streams
-// In this example leaflet will gzpi selected txt files
+// Cahier also supports streams
+// In this example cahier will gzip selected txt files
 var zlib = require('zlib');
 convert.handle(['json', 'js', 'css'], 'stream', function (stream, next) {
   var gzip = zlib.createGzip();
@@ -43,7 +43,7 @@ convert.handle(['json', 'js', 'css'], 'stream', function (stream, next) {
   stream.resume();
 });
 
-// leaflet is now ready
+// cahier is now ready
 function ready(error) {
   if (error) throw error;
 
@@ -63,9 +63,9 @@ function ready(error) {
 
 ##API documentation
 
-### leaflet = LeafLet(options, callback)
+### cahier = Cahier(options, callback)
 
-`require('leaflet')` will return function there when executed returns a new leaflet instance.
+`require('cahier')` will return function there when executed returns a new cahier instance.
 The function require two arguments `options` and `callback`.
 
 `options` is an object there must contains the following properties:
@@ -76,7 +76,7 @@ The function require two arguments `options` and `callback`.
 `callback` is an function there will be execute with an `error` argument.
 If `error` is `null` no error occurred.
 
-### leaflet.handle([filetype], usetype, handler)
+### cahier.handle([filetype], usetype, handler)
 
 This method allow you to attach an filehandler function to one or more filetypes.
 The `.handle` method require three arguments `filetype`, `usetype` and `handler`.
@@ -90,7 +90,7 @@ Note that if `filetype` is not specified the `handle` function will attached to 
 a `string`. The type depend on the `usetype` argument.
 * next: is a function that you must call with a output `stream`, `buffer` or `string`.
 You can also execute it with an `error` object, in that case all future filehandlers will be skiped,
-and the error be emitted in the returned stream object from `leaflet.read(filetype)`.
+and the error be emitted in the returned stream object from `cahier.read(filetype)`.
 * `file` is an object containing a `path` property its value is an relative path to handled file.
 Note that file argument is rarely need, but can be useful in debugging and edgecases.
 
@@ -104,14 +104,14 @@ In case `usetype` is a string both the `input` and `output` type will be the val
 In case that you decide to use `stream`, you must manually resume the input stream and pause
 output stream, before executeing the `stream.pause()`.
 
-### leaflet.read(filepath)
+### cahier.read(filepath)
 
 This method returns a `ReadStream` there can be piped to any `WritStream`. The method must
 be executed with a _relative_ `filepath` argument. The `filepath` argument may start with `/`
 indicating an `absolute` but it will be threaded as an path relative to the `source` path given
-in `leaflet(options)`.
+in `cahier(options)`.
 
-Any `../` or `./` will be handled correctly, but leaflet won't allow the user to read files below
+Any `../` or `./` will be handled correctly, but cahier won't allow the user to read files below
 the `source` directory. Any extra `../` indicating that will simply be skiped.
 
 Note that the returned `ReadStream` object may emit an `error` event, if any error was cached
@@ -122,19 +122,19 @@ Along with the normal `ReadStream` events and method, the stream will also emit 
 Once emitted a `stream.mtime` property will be set, this contains a `Date` object pointing to the
 `stat.mtime` of the source file.
 
-### leaflet.ignore(filename)
+### cahier.ignore(filename)
 
-When reading a file using `leaflet.read(filepath)` it will first match again an ignore list.
+When reading a file using `cahier.read(filepath)` it will first match again an ignore list.
 The match can be relative in terms of a filename or an absloute filepath.
 
 This method adds filepaths or filenames to the ignore list. If the `filename` argument starts with
 `/` it will be threaded as an absolute `filepath`, if not it will be threaded as a filename.
 
-If a filepath match the ignore list, the returned stream object by `leaflet.read(filepath)` will
+If a filepath match the ignore list, the returned stream object by `cahier.read(filepath)` will
 simply emit an `error` as if the file didn't exist. However the error object will have an extra
 `ignore` property set to true.
 
-### leaflet.compile(callback)
+### cahier.compile(callback)
 
 The current implementation will remove all files from `cache` directory and compile all files from
 the `source` directory. When all files are compiled the `callback` will be executed. If any error
@@ -143,15 +143,15 @@ occurred the `callback` will be execute with this error as its first argument, o
 
 Note: in the future this function may cache so only non-compiled or updated files will compiled.
 
-### leaflet.watch()
+### cahier.watch()
 
-When executed leaflet will check the file stat for any modification and determin if the file should
+When executed cahier will check the file stat for any modification and determin if the file should
 be recompiled or just read from cached. This affect performance, but is highly useful in development.
 
-### leaflet.memory(size)
+### cahier.memory(size)
 
 Highly used files will be cached in a memory buffer, the total buffer size do approximately match
-the given `size` argument, but since `leaflet` is stream based, the compiled and compressed size
+the given `size` argument, but since `cahier` is stream based, the compiled and compressed size
 can not be preknown with absolute certainty.
 
 The `size` argument can be `Infinity` a number defining the size in bytes, or a simple string

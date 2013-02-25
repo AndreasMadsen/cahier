@@ -20,7 +20,7 @@ var dirSplit = process.platform === 'win32' ? '\\' : '/';
 // chunk size (64 KB)
 var chunkSize = 64 * 1024;
 
-function Leaflet(options, callback) {
+function Cahier(options, callback) {
   var self = this;
 
   // Check callback
@@ -115,13 +115,13 @@ function Leaflet(options, callback) {
   ], callback.bind(this));
 }
 module.exports = function (options, callback) {
-  return new Leaflet(options, callback);
+  return new Cahier(options, callback);
 };
 
 // Check all files in `read` and process them all
 var types = ['B', 'KB', 'MB', 'GB'];
 
-Leaflet.prototype.memory = function (size) {
+Cahier.prototype.memory = function (size) {
   if (typeof size === 'number') {
     return this.cacheSize = size;
   }
@@ -144,7 +144,7 @@ Leaflet.prototype.memory = function (size) {
 };
 
 // Attach handler to given filetypes
-Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
+Cahier.prototype.handle = function (/*[filetypes], options, callback*/) {
   var self = this;
   var args = Array.prototype.slice.call(arguments);
 
@@ -208,7 +208,7 @@ Leaflet.prototype.handle = function (/*[filetypes], options, callback*/) {
   });
 };
 
-Leaflet.prototype.convert = function (fromFiletype, toFiletype) {
+Cahier.prototype.convert = function (fromFiletype, toFiletype) {
 
   if (arguments.length !== 2) {
     throw new Error("Both filetype arguments must be specified");
@@ -233,13 +233,13 @@ Leaflet.prototype.convert = function (fromFiletype, toFiletype) {
 };
 
 // Read and process file, if the file don't exist in memory, `write` directory
-// or has been reset by Leaflet.watch
-Leaflet.prototype.read = function (filename) {
+// or has been reset by Cahier.watch
+Cahier.prototype.read = function (filename) {
   var self = this,
       output, pipelink;
 
   if (this.ready === false) {
-    return new Error('leaflet object is not ready');
+    return new Error('cahier object is not ready');
   }
 
   // absolute paths will be relative to read dir
@@ -388,7 +388,7 @@ Leaflet.prototype.read = function (filename) {
 };
 
 // Add a file to the ignore list, if the `read` request match it we will claim that it don't exist
-Leaflet.prototype.ignore = function (filename) {
+Cahier.prototype.ignore = function (filename) {
 
   // If this is a specific file, convert it to an absolute path
   if (filename.indexOf(dirSplit) !== -1) {
@@ -400,9 +400,9 @@ Leaflet.prototype.ignore = function (filename) {
 };
 
 // Find all files in `read` and process them all
-Leaflet.prototype.compile = function (callback) {
+Cahier.prototype.compile = function (callback) {
   if (this.ready === false) {
-    throw new Error('leaflet object is not ready');
+    throw new Error('cahier object is not ready');
   }
 
   var self = this;
@@ -443,7 +443,7 @@ Leaflet.prototype.compile = function (callback) {
 };
 
 // Watch `read` directory for changes and update files once they are requested
-Leaflet.prototype.watch = function () {
+Cahier.prototype.watch = function () {
   this.watching = true;
 };
 

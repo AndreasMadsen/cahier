@@ -7,20 +7,20 @@ var vows = require('vows'),
     async = require('async'),
     assert = require('assert'),
     common = require('../common.js'),
-    leaflet = require(common.leaflet);
+    cahier = require(common.cahier);
 
 // remove temp content
 common.reset();
 
 var convert;
-vows.describe('testing leaflet memory watcher').addBatch({
+vows.describe('testing cahier memory watcher').addBatch({
 
-  'when a leaflet object is created': {
+  'when a cahier object is created': {
     topic: function () {
       var self = this;
 
-      // Create leaflet object
-      convert = leaflet(common.options, function (error) {
+      // Create cahier object
+      convert = cahier(common.options, function (error) {
         self.callback(error, null);
       });
 

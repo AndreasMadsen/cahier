@@ -1,15 +1,15 @@
 {
-  "name": "leaflet",
+  "name": "cahier",
   "description": "Static file conversion, writing and reading",
   "version": "0.3.6",
   "author": "Andreas Madsen <amwebdk@gmail.com>",
   "scripts": {
     "test": "vows test/simple/* --spec --isolate"
   },
-  "main": "./leaflet.js",
+  "main": "./cahier.js",
   "repository" : {
     "type": "git",
-    "url": "git://github.com/AndreasMadsen/leaflet.git"
+    "url": "git://github.com/AndreasMadsen/cahier.git"
   },
   "keywords": [
     "static",

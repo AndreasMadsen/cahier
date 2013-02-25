@@ -10,7 +10,7 @@ var vows = require('vows'),
     async = require('async'),
     assert = require('assert'),
     common = require('../common.js'),
-    leaflet = require(common.leaflet);
+    cahier = require(common.cahier);
 
 // remove temp content
 common.reset();
@@ -27,9 +27,9 @@ var size = 1024;
 var filesize = 1024 * size / 2;
 var buffersize = filesize * 4;
 
-vows.describe('testing leaflet memory handler').addBatch({
+vows.describe('testing cahier memory handler').addBatch({
 
-  'when a leaflet object is created': {
+  'when a cahier object is created': {
     topic: function () {
       var self = this;
       var content;
@@ -47,8 +47,8 @@ vows.describe('testing leaflet memory handler').addBatch({
       fs.writeFileSync(filepath[1], content);
       expected[1] = content + addition;
 
-      // Create leaflet object
-      convert = leaflet(common.options, function (error) {
+      // Create cahier object
+      convert = cahier(common.options, function (error) {
         self.callback(error, null);
       });
 
@@ -75,7 +75,7 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       // not public API, but there is no real way to test this
-      // because of the transparenty in leaflet
+      // because of the transparenty in cahier
       assert.equal(convert.cache['bigfile.txt'].request, 1);
     },
 
@@ -106,7 +106,7 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       // not public API, but there is no real way to test this
-      // because of the transparenty in leaflet
+      // because of the transparenty in cahier
       assert.equal(convert.cache['bigfile.txt'].request, 2);
       assert.notEqual(convert.cache['bigfile.txt'].stream, null);
     },
@@ -135,7 +135,7 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       // not public API, but there is no real way to test this
-      // because of the transparenty in leaflet
+      // because of the transparenty in cahier
       assert.equal(convert.cache['bigfile.txt'].request, 3);
       assert.notEqual(convert.cache['bigfile.txt'].stream, null);
 
@@ -166,7 +166,7 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       // not public API, but there is no real way to test this
-      // because of the transparenty in leaflet
+      // because of the transparenty in cahier
       assert.equal(convert.cache['bigfile_2.txt'].request, 3);
       assert.equal(convert.cache['bigfile_2.txt'].stream, null);
     },
@@ -201,7 +201,7 @@ vows.describe('testing leaflet memory handler').addBatch({
       assert.ifError(error);
 
       // not public API, but there is no real way to test this
-      // because of the transparenty in leaflet
+      // because of the transparenty in cahier
       assert.equal(convert.cache['bigfile_2.txt'].request, 4);
       assert.notEqual(convert.cache['bigfile_2.txt'].stream, null);
       assert.equal(convert.cache['bigfile.txt'].stream, null);

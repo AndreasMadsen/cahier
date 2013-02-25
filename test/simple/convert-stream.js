@@ -11,7 +11,7 @@ var vows = require('vows'),
     assert = require('assert'),
     crypto = require('crypto'),
     common = require('../common.js'),
-    leaflet = require(common.leaflet);
+    cahier = require(common.cahier);
 
 // remove temp content
 common.reset();
@@ -19,19 +19,19 @@ common.reset();
 var convert;
 var expexted;
 
-vows.describe('testing leaflet converter - stream based').addBatch({
+vows.describe('testing cahier converter - stream based').addBatch({
 
-  'when a leaflet object is created': {
+  'when a cahier object is created': {
     topic: function () {
       // create convert object
       async.series([
 
-        // create leaflet object
+        // create cahier object
         function (callback) {
-          convert = leaflet(common.options, callback);
+          convert = cahier(common.options, callback);
         },
 
-        // setup leaflet object
+        // setup cahier object
         function (callback) {
 
           // internal convert: stream => stream

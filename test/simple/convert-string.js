@@ -9,7 +9,7 @@ var vows = require('vows'),
     async = require('async'),
     assert = require('assert'),
     common = require('../common.js'),
-    leaflet = require(common.leaflet);
+    cahier = require(common.cahier);
 
 // remove temp content
 common.reset();
@@ -17,19 +17,19 @@ common.reset();
 var mtimeString = fs.statSync(path.join(common.fixture, 'static.json')).mtime.toJSON();
 
 var convert;
-vows.describe('testing leaflet converter - string based').addBatch({
+vows.describe('testing cahier converter - string based').addBatch({
 
-  'when a leaflet object is created': {
+  'when a cahier object is created': {
     topic: function () {
       // create convert object
       async.series([
 
-        // create leaflet object
+        // create cahier object
         function (callback) {
-          convert = leaflet(common.options, callback);
+          convert = cahier(common.options, callback);
         },
 
-        // setup leaflet object
+        // setup cahier object
         function (callback) {
           // simpel handlers, will add first and second exports properties
           convert.handle('json', 'string', function (content, next) {

@@ -18,7 +18,7 @@ exports.test = path.dirname(module.filename);
 exports.root = path.resolve(exports.test, '..');
 
 // resolve filepath to main module
-exports.leaflet = path.resolve(exports.root, 'leaflet.js');
+exports.cahier = path.resolve(exports.root, 'cahier.js');
 
 // resolve test dirpaths
 exports.fixture = path.resolve(exports.test, 'fixture');
